@@ -47,8 +47,8 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_tables(self, line):
         "List tables"
-        print "\nAvaliable tables:"
         self.tables = self.conn.list_tables()
+        print "\nAvailable tables:"
         self.pp.pprint(self.tables)
 
     def do_describe(self, line):
