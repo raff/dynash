@@ -23,7 +23,6 @@ from os.path import basename
 class DynamoDBShell(cmd.Cmd):
 
     prompt = "dynash> "
-    intro = "\nA simple shell to interact with DynamoDB\n"
 
     def __init__(self):
         cmd.Cmd.__init__(self)
@@ -48,6 +47,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_tables(self, line):
         "List tables"
+        print "\nAvaliable tables:"
         self.tables = self.conn.list_tables()
         self.pp.pprint(self.tables)
 
@@ -226,7 +226,8 @@ class DynamoDBShell(cmd.Cmd):
         return list
 
     def preloop(self):
-        pass
+        print "\nA simple shell to interact with DynamoDB"
+        self.do_tables('')
 
     def postloop(self):
         print "Goodbye!"
