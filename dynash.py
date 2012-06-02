@@ -154,7 +154,6 @@ class DynamoDBShell(cmd.Cmd):
             table = self.table
 
         attrs = args[0].split(",") if args else None
-        print "asc:%s" % asc
 
         for item in table.scan(attributes_to_get=attrs):
             self.pp.pprint(item)
@@ -162,11 +161,16 @@ class DynamoDBShell(cmd.Cmd):
     def do_query(self, line):
         "query table hkey [attributes,...] [asc|desc]"
         args = self.getargs(line)
+
+        if '-r' in args:
+            asc = False
+            args.remove('-r')
+        else:
+            asc = True
         
         table = self.get_table(args.pop(0))
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
-        asc = (len(args) < 3 or args[2].startswith('asc'))
 
         for item in table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc):
             self.pp.pprint(item)
@@ -247,7 +251,10 @@ class DynamoDBShell(cmd.Cmd):
 
     def preloop(self):
         print "\nA simple shell to interact with DynamoDB"
-        self.do_tables('')
+        try:
+            self.do_tables('')
+        except:
+            traceback.print_exc()
 
     def postloop(self):
         print "Goodbye!"
