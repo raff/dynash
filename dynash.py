@@ -45,6 +45,12 @@ class DynamoDBShell(cmd.Cmd):
     def gettype(self, stype):
         return stype.upper()[0]
 
+    def get_table(self, table_name=None):
+        if table_name == None or table_name == '.':
+            return self.table
+        else:
+            return self.conn.get_table(table_name)
+
     def do_tables(self, line):
         "List tables"
         self.tables = self.conn.list_tables()
@@ -94,10 +100,7 @@ class DynamoDBShell(cmd.Cmd):
         self.conn.delete_table(self.conn.get_table(line))
 
     def do_refresh(self, line):
-        if line:
-            table = self.conn.get_table(line)
-        else:
-            table = self.table
+        table = self.get_table(line)
         table.refresh(True)
         self.pp.pprint(self.conn.describe_table(table.name))
 
@@ -142,15 +145,30 @@ class DynamoDBShell(cmd.Cmd):
         if item:
             item.delete()
 
-    def do_all(self, line):
-        "get all entries"
+    def do_scan(self, line):
+        "scan table [attributes,...]"
         args = self.getargs(line)
-        if args and args[0] != '.':
-            table = self.conn.get_table(args[0])
+        if args:
+            table = self.get_table(args.pop(0))
         else:
             table = self.table
-        attrs = args[1].split(",") if len(args) > 1 else None
+
+        attrs = args[0].split(",") if args else None
+        print "asc:%s" % asc
+
         for item in table.scan(attributes_to_get=attrs):
+            self.pp.pprint(item)
+
+    def do_query(self, line):
+        "query table hkey [attributes,...] [asc|desc]"
+        args = self.getargs(line)
+        
+        table = self.get_table(args.pop(0))
+        hkey = args[0]
+        attrs = args[1].split(",") if len(args) > 1 else None
+        asc = (len(args) < 3 or args[2].startswith('asc'))
+
+        for item in table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc):
             self.pp.pprint(item)
 
     def do_rmall(self, line):
@@ -163,7 +181,7 @@ class DynamoDBShell(cmd.Cmd):
                 args = [ self.table.name ]
 
             while args:
-                table = self.conn.get_table(args.pop())
+                table = self.conn.get_table(args.pop(0))
                 print "from table " + table.name
 
                 for item in table.scan(attributes_to_get=[]):
@@ -197,6 +215,8 @@ class DynamoDBShell(cmd.Cmd):
     do_ls = do_tables
     do_mkdir = do_create
     do_rmdir = do_delete
+    do_q = do_query
+    do_all = do_scan
     do_exit = do_quit = do_EOF
 
     #
