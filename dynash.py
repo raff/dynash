@@ -45,11 +45,14 @@ class DynamoDBShell(cmd.Cmd):
     def gettype(self, stype):
         return stype.upper()[0]
 
-    def get_table(self, table_name=None):
-        if table_name == None or table_name == '.':
-            return self.table
+    def get_table(self, line):
+        if line and line[0] == ':':
+            parts = line.split(" ", 1)
+            table_name = parts[0][1:]
+            line = strip(parts[1]) if len(parts) > 1 else ""
+            return self.conn.get_table(table_name), line
         else:
-            return self.conn.get_table(table_name)
+            return self.table, line
 
     def do_tables(self, line):
         "List tables"
@@ -58,14 +61,12 @@ class DynamoDBShell(cmd.Cmd):
         self.pp.pprint(self.tables)
 
     def do_describe(self, line):
-        "Describe table"
-        if line:
-            self.pp.pprint(self.conn.describe_table(line))
-        elif self.table:
-            self.pp.pprint(self.conn.describe_table(self.table.name))
+        "describe {tablename}"
+        table = line or self.table.name
+        self.pp.pprint(self.conn.describe_table(table))
 
     def do_use(self, line):
-        "Select table"
+        "use {tablename}"
         self.table = self.conn.get_table(line)
         self.pp.pprint(self.conn.describe_table(self.table.name))
         self.prompt = "%s> " % self.table.name
@@ -100,17 +101,19 @@ class DynamoDBShell(cmd.Cmd):
         self.conn.delete_table(self.conn.get_table(line))
 
     def do_refresh(self, line):
-        table = self.get_table(line)
+        table, line = self.get_table(line)
         table.refresh(True)
         self.pp.pprint(self.conn.describe_table(table.name))
 
     def do_put(self, line):
-        "put {json-body}"
+        "put [:tablename] {json-body}"
+        table, line = self.get_table(line)
         item = json.loads(line)
-        self.table.new_item(None, None, item).put()
+        table.new_item(None, None, item).put()
 
     def do_update(self, line):
-        "update {hashkey} {attributes} [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
+        "update [:tablename] {hashkey} {attributes} [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
+        table, line = self.get_table(line)
         hkey, attr = line.split(" ", 1)
         attr = json.loads(attr.strip())
         item = self.table.new_item(hash_key=hkey)
@@ -125,7 +128,8 @@ class DynamoDBShell(cmd.Cmd):
         self.pp.pprint(updated)
 
     def do_get(self, line):
-        "get {haskkey} [rangekey]"
+        "get [:tablename] {haskkey} [rangekey]"
+        table, line = self.get_table(line)
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
@@ -136,7 +140,8 @@ class DynamoDBShell(cmd.Cmd):
         self.pp.pprint(item)
 
     def do_rm(self, line):
-        "rm {haskkey} [rangekey]"
+        "rm [:tablename] {haskkey} [rangekey]"
+        table, line = self.get_table(line)
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
@@ -146,20 +151,17 @@ class DynamoDBShell(cmd.Cmd):
             item.delete()
 
     def do_scan(self, line):
-        "scan table [attributes,...]"
+        "scan [:tablename] [attributes,...]"
+        table, line = self.get_table(line)
         args = self.getargs(line)
-        if args:
-            table = self.get_table(args.pop(0))
-        else:
-            table = self.table
-
         attrs = args[0].split(",") if args else None
 
         for item in table.scan(attributes_to_get=attrs):
             self.pp.pprint(item)
 
     def do_query(self, line):
-        "query table hkey [attributes,...] [asc|desc]"
+        "query [:tablename] hkey [attributes,...] [asc|desc]"
+        table, line = self.get_table(line)
         args = self.getargs(line)
 
         if '-r' in args:
@@ -168,7 +170,6 @@ class DynamoDBShell(cmd.Cmd):
         else:
             asc = True
         
-        table = self.get_table(args.pop(0))
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
 
@@ -176,7 +177,7 @@ class DynamoDBShell(cmd.Cmd):
             self.pp.pprint(item)
 
     def do_rmall(self, line):
-        "remove all entries in table (say 'yes')"
+        "remove [tablename...] yes"
         args = self.getargs(line)
         if args and args[-1] == "yes":
             args.pop()
@@ -219,8 +220,9 @@ class DynamoDBShell(cmd.Cmd):
     do_ls = do_tables
     do_mkdir = do_create
     do_rmdir = do_delete
+    do_cd = do_use
     do_q = do_query
-    do_all = do_scan
+    do_l = do_scan
     do_exit = do_quit = do_EOF
 
     #
