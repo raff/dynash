@@ -4,8 +4,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+try:
+    import cmd2 as cmd
+except ImportError:
+    import cmd
+
 import boto
-import cmd
 import json
 import mimetypes
 import os
@@ -39,8 +43,11 @@ class DynamoDBShell(cmd.Cmd):
         self.print_time = False
         self.start_time = None
 
+    def pprint(self, object):
+        print self.pp.pformat(object)
+
     def getargs(self, line):
-        return shlex.split(line)
+        return shlex.split(str(line))
 
     def gettype(self, stype):
         return stype.upper()[0]
@@ -49,7 +56,7 @@ class DynamoDBShell(cmd.Cmd):
         if line and line[0] == ':':
             parts = line.split(" ", 1)
             table_name = parts[0][1:]
-            line = strip(parts[1]) if len(parts) > 1 else ""
+            line = parts[1].strip() if len(parts) > 1 else ""
             return self.conn.get_table(table_name), line
         else:
             return self.table, line
@@ -58,17 +65,17 @@ class DynamoDBShell(cmd.Cmd):
         "List tables"
         self.tables = self.conn.list_tables()
         print "\nAvailable tables:"
-        self.pp.pprint(self.tables)
+        self.pprint(self.tables)
 
     def do_describe(self, line):
         "describe {tablename}"
         table = line or self.table.name
-        self.pp.pprint(self.conn.describe_table(table))
+        self.pprint(self.conn.describe_table(table))
 
     def do_use(self, line):
         "use {tablename}"
         self.table = self.conn.get_table(line)
-        self.pp.pprint(self.conn.describe_table(self.table.name))
+        self.pprint(self.conn.describe_table(self.table.name))
         self.prompt = "%s> " % self.table.name
 
     def do_create(self, line):
@@ -94,7 +101,7 @@ class DynamoDBShell(cmd.Cmd):
         t = self.conn.create_table(name, 
             self.conn.create_schema(hkey, hkey_type, rkey, rkey_type),
             5, 5)
-        self.pp.pprint(self.conn.describe_table(t.name))
+        self.pprint(self.conn.describe_table(t.name))
 
     def do_delete(self, line):
         "delete {tablename}"
@@ -103,7 +110,7 @@ class DynamoDBShell(cmd.Cmd):
     def do_refresh(self, line):
         table, line = self.get_table(line)
         table.refresh(True)
-        self.pp.pprint(self.conn.describe_table(table.name))
+        self.pprint(self.conn.describe_table(table.name))
 
     def do_put(self, line):
         "put [:tablename] {json-body}"
@@ -123,9 +130,9 @@ class DynamoDBShell(cmd.Cmd):
                 value = set(value)
             item[name] = value
 
-        self.pp.pprint(item)
+        self.pprint(item)
         updated = item.save(return_values='ALL_OLD')
-        self.pp.pprint(updated)
+        self.pprint(updated)
 
     def do_get(self, line):
         "get [:tablename] {haskkey} [rangekey]"
@@ -133,11 +140,11 @@ class DynamoDBShell(cmd.Cmd):
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
-        #self.pp.pprint(self.table.get_item(hkey, rkey))
+        #self.pprint(self.table.get_item(hkey, rkey))
 
         item = self.table.get_item(hkey, rkey,
             consistent_read=self.consistent)
-        self.pp.pprint(item)
+        self.pprint(item)
 
     def do_rm(self, line):
         "rm [:tablename] {haskkey} [rangekey]"
@@ -157,7 +164,7 @@ class DynamoDBShell(cmd.Cmd):
         attrs = args[0].split(",") if args else None
 
         for item in table.scan(attributes_to_get=attrs):
-            self.pp.pprint(item)
+            self.pprint(item)
 
     def do_query(self, line):
         "query [:tablename] hkey [attributes,...] [asc|desc]"
@@ -174,7 +181,7 @@ class DynamoDBShell(cmd.Cmd):
         attrs = args[1].split(",") if len(args) > 1 else None
 
         for item in table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc):
-            self.pp.pprint(item)
+            self.pprint(item)
 
     def do_rmall(self, line):
         "remove [tablename...] yes"
