@@ -119,16 +119,30 @@ class DynamoDBShell(cmd.Cmd):
         table.new_item(None, None, item).put()
 
     def do_update(self, line):
-        "update [:tablename] {hashkey} {attributes} [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
+        "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
         table, line = self.get_table(line)
         hkey, attr = line.split(" ", 1)
-        attr = json.loads(attr.strip())
+
+        if attr[0] == '-':
+            op, attr = attr.split(" ", 1)
+            op = op[1]
+        else:
+            op = "u"
+
         item = self.table.new_item(hash_key=hkey)
+
+        attr = json.loads(attr.strip())
         for name in attr.keys():
             value = attr[name]
             if isinstance(value, list):
                 value = set(value)
-            item[name] = value
+
+            if op == 'a':
+                item.add_attribute(name, value)
+            elif op == 'd':
+                item.delete_attribute(name, value)
+            else:
+                item.put_attribute(name, value)
 
         self.pprint(item)
         updated = item.save(return_values='ALL_OLD')
