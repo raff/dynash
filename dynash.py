@@ -6,8 +6,10 @@ from __future__ import unicode_literals
 
 try:
     import cmd2 as cmd
+    print "using cmd2"
 except ImportError:
     import cmd
+    print "using cmd"
 
 import boto
 import json
@@ -69,8 +71,35 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_describe(self, line):
         "describe {tablename}"
+        if line and line.startswith('-c'):
+            create_info = True
+            parts = line.split(" ", 1)
+            line = parts[1].strip() if len(parts) > 1 else None
+        else:
+            create_info = False
+            
         table = line or self.table.name
-        self.pprint(self.conn.describe_table(table))
+        desc = self.conn.describe_table(table)
+
+        if create_info:
+            info = desc['Table']
+            schema = info['KeySchema']
+            name = info['TableName']
+
+            hkey = schema['HashKeyElement']
+            hkey = "%s:%s" % (hkey['AttributeName'], hkey['AttributeType'])
+
+            if 'RangeKeyElement' in schema:
+                rkey = schema['RangeKeyElement']
+                rkey = " %s:%s" % (rkey['AttributeName'], rkey['AttributeType'])
+            else:
+                rkey = ''
+
+            prov = info['ProvisionedThroughput']
+            prov = " -rc:%d -wc:%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
+            print "create %s %s%s" % ( name, hkey, rkey )
+        else:
+            self.pprint(desc)
 
     def do_use(self, line):
         "use {tablename}"
