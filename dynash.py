@@ -63,16 +63,23 @@ class DynamoDBShell(cmd.Cmd):
         self.table = None
         self.consistent = False
         self.print_time = False
+        self.pretty_print = True
         self.start_time = None
 
     def pprint(self, object):
-        print self.pp.pformat(object)
+        if self.pretty_print:
+            print self.pp.pformat(object)
+        else:
+            print str(object)
 
     def getargs(self, line):
         return shlex.split(str(line))
 
     def gettype(self, stype):
         return stype.upper()[0]
+
+    def is_on(self, line):
+        return line.lower() in [ 'yes', 'true', 'on', '1' ]
 
     def get_table(self, line):
         if line and line[0] == ':':
@@ -178,7 +185,7 @@ class DynamoDBShell(cmd.Cmd):
         else:
             op = "u"
 
-        item = self.table.new_item(hash_key=hkey)
+        item = table.new_item(hash_key=hkey)
 
         attr = json.loads(attr.strip())
         for name in attr.keys():
@@ -203,9 +210,9 @@ class DynamoDBShell(cmd.Cmd):
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
-        #self.pprint(self.table.get_item(hkey, rkey))
+        #self.pprint(table.get_item(hkey, rkey))
 
-        item = self.table.get_item(hkey, rkey,
+        item = table.get_item(hkey, rkey,
             consistent_read=self.consistent)
         self.pprint(item)
 
@@ -215,7 +222,7 @@ class DynamoDBShell(cmd.Cmd):
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
-        item = self.table.get_item(hkey, rkey, [],
+        item = table.get_item(hkey, rkey, [],
             consistent_read=self.consistent)
         if item:
             item.delete()
@@ -267,17 +274,21 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_elapsed(self, line):
         if line:
-            self.print_time = line in [ 'yes', 'true', '1' ]
-        else:
-            self.print_time = not self.print_time
+            self.print_time = self.is_on(line)
+
         print "print elapsed time: %s" % self.print_time
 
     def do_consistent(self, line):
         if line:
-            self.consistent = line in [ 'yes', 'true', '1' ]
-        else:
-            self.consistent = not self.consistent
+            self.consistent = self.is_on(line)
+
         print "use consistent reads: %s" % self.consistent
+
+    def do_pretty(self, line):
+        if line:
+            self.pretty_print = self.is_on(line)
+
+        print "pretty output: %s" % self.pretty_print
 
     def do_EOF(self, line):
         "Exit shell"
