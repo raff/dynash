@@ -34,6 +34,7 @@ except ImportError:
 import boto
 import json
 import mimetypes
+import logging
 import os
 import os.path
 import pprint
@@ -64,6 +65,7 @@ class DynamoDBShell(cmd.Cmd):
         self.consistent = False
         self.print_time = False
         self.pretty_print = True
+        self.verbose = False
         self.start_time = None
 
     def pprint(self, object):
@@ -73,7 +75,7 @@ class DynamoDBShell(cmd.Cmd):
             print str(object)
 
     def getargs(self, line):
-        return shlex.split(str(line))
+        return shlex.split(str(line.decode('string-escape')))
 
     def gettype(self, stype):
         return stype.upper()[0]
@@ -210,7 +212,6 @@ class DynamoDBShell(cmd.Cmd):
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
-        #self.pprint(table.get_item(hkey, rkey))
 
         item = table.get_item(hkey, rkey,
             consistent_read=self.consistent)
@@ -289,6 +290,16 @@ class DynamoDBShell(cmd.Cmd):
             self.pretty_print = self.is_on(line)
 
         print "pretty output: %s" % self.pretty_print
+
+    def do_verbose(self, line):
+        if line:
+            self.verbose = self.is_on(line)
+
+        print "verbose output: %s" % self.verbose
+        if self.verbose:
+            boto.set_stream_logger('boto', level=logging.DEBUG)
+        else:
+            boto.set_stream_logger('boto', level=logging.INFO)
 
     def do_EOF(self, line):
         "Exit shell"
