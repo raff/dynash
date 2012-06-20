@@ -31,6 +31,7 @@ try:
 except ImportError:
     import cmd
 
+import ast
 import boto
 import json
 import mimetypes
@@ -209,13 +210,24 @@ class DynamoDBShell(cmd.Cmd):
     def do_get(self, line):
         "get [:tablename] {haskkey} [rangekey]"
         table, line = self.get_table(line)
-        args = self.getargs(line)
-        hkey = args[0]
-        rkey = args[1] if len(args) > 1 else None
 
-        item = table.get_item(hkey, rkey,
-            consistent_read=self.consistent)
-        self.pprint(item)
+        if line.startswith('(') or line.find(",") > 0:
+            # list of IDs
+            list = ast.literal_eval(line)
+            print "get %s" % str(list)
+
+            batch = self.conn.new_batch_list()
+            batch.add_batch(table, list)
+            response = batch.submit()
+            self.pprint(response['Responses'][table.name]['Items'])
+        else:
+            args = self.getargs(line)
+            hkey = args[0]
+            rkey = args[1] if len(args) > 1 else None
+
+            item = table.get_item(hkey, rkey,
+                consistent_read=self.consistent)
+            self.pprint(item)
 
     def do_rm(self, line):
         "rm [:tablename] {haskkey} [rangekey]"
