@@ -211,15 +211,35 @@ class DynamoDBShell(cmd.Cmd):
         "get [:tablename] {haskkey} [rangekey]"
         table, line = self.get_table(line)
 
-        if line.startswith('(') or line.find(",") > 0:
+        if line.startswith('(') or line.startswith('[') or line.find(",") > 0:
             # list of IDs
             list = ast.literal_eval(line)
-            print "get %s" % str(list)
+            print ">> get %s" % str(list)
+
+            from collections import OrderedDict
+
+            ordered = OrderedDict()
+            for id in list:
+                if not isinstance(id, tuple):
+                    hkey = unicode(id)
+                    rkey = None
+                else:
+                    hkey = unicode(id[0])
+                    hkey = unicode(id[1])
+                    
+                ordered[(hkey, rkey)] = None
 
             batch = self.conn.new_batch_list()
-            batch.add_batch(table, list)
+            batch.add_batch(table, ordered.keys())
             response = batch.submit()
-            self.pprint(response['Responses'][table.name]['Items'])
+
+            hkey = table.schema.hash_key_name
+            rkey = table.schema.range_key_name
+
+            for item in response['Responses'][table.name]['Items']:
+                ordered[(item.get(hkey),item.get(rkey))] = item
+
+            self.pprint(filter(None, ordered.values()))
         else:
             args = self.getargs(line)
             hkey = args[0]
