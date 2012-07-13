@@ -33,6 +33,7 @@ except ImportError:
 
 import ast
 import boto
+import boto.dynamodb.exceptions as dynamodb_exceptions
 import json
 import mimetypes
 import logging
@@ -84,7 +85,7 @@ class DynamoDBShell(cmd.Cmd):
     def is_on(self, line):
         return line.lower() in [ 'yes', 'true', 'on', '1' ]
 
-    def get_table(self, line):
+    def get_table_params(self, line):
         if line and line[0] == ':':
             parts = line.split(" ", 1)
             table_name = parts[0][1:]
@@ -92,6 +93,12 @@ class DynamoDBShell(cmd.Cmd):
             return self.conn.get_table(table_name), line
         else:
             return self.table, line
+
+    def get_table(self, line):
+        if line:
+            return self.conn.get_table(line)
+        else:
+            return self.table
 
     def do_tables(self, line):
         "List tables"
@@ -133,7 +140,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_use(self, line):
         "use {tablename}"
-        self.table = self.conn.get_table(line)
+        self.table = self.conn.get_table_params(line)
         self.pprint(self.conn.describe_table(self.table.name))
         self.prompt = "%s> " % self.table.name
 
@@ -164,22 +171,37 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_delete(self, line):
         "delete {tablename}"
-        self.conn.delete_table(self.conn.get_table(line))
+        self.conn.delete_table(self.conn.get_table_params(line))
 
     def do_refresh(self, line):
-        table, line = self.get_table(line)
+        "refresh {table_name}"
+        table = self.get_table(line)
         table.refresh(True)
         self.pprint(self.conn.describe_table(table.name))
 
+    def do_capacity(self, line):
+        "capacity {tablename} {read_units} {write_units}"
+        args = self.getargs(line)
+
+        table = self.get_table(args[0])
+        read_units = int(args[1])
+        write_units = int(args[2])
+
+        table.update_throughput(read_units, write_units)
+        print "capacity for %s updated to %d read units, %d write units" % (table.name, read_units, write_units)
+        print ""
+        self.do_refresh(table.name)
+
+
     def do_put(self, line):
         "put [:tablename] {json-body}"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
         item = json.loads(line)
         table.new_item(None, None, item).put()
 
     def do_update(self, line):
         "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
         hkey, attr = line.split(" ", 1)
 
         if attr[0] == '-':
@@ -209,7 +231,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_get(self, line):
         "get [:tablename] {haskkey} [rangekey]"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
 
         if line.startswith('(') or line.startswith('[') or line.find(",") > 0:
             # list of IDs
@@ -251,7 +273,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_rm(self, line):
         "rm [:tablename] {haskkey} [rangekey]"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
         args = self.getargs(line)
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
@@ -262,7 +284,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_scan(self, line):
         "scan [:tablename] [attributes,...]"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
         args = self.getargs(line)
         attrs = args[0].split(",") if args else None
 
@@ -271,7 +293,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_query(self, line):
         "query [:tablename] hkey [attributes,...] [asc|desc]"
-        table, line = self.get_table(line)
+        table, line = self.get_table_params(line)
         args = self.getargs(line)
 
         if '-r' in args:
@@ -296,7 +318,7 @@ class DynamoDBShell(cmd.Cmd):
                 args = [ self.table.name ]
 
             while args:
-                table = self.conn.get_table(args.pop(0))
+                table = self.conn.get_table_params(args.pop(0))
                 print "from table " + table.name
 
                 for item in table.scan(attributes_to_get=[]):
@@ -362,6 +384,8 @@ class DynamoDBShell(cmd.Cmd):
         except IndexError:
             print "invalid number of arguments"
             return False
+        except dynamodb_exceptions.DynamoDBResponseError, dberror:
+            print self.pp.pformat(dberror)
         except:
             traceback.print_exc()
             return False
