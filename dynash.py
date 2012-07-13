@@ -140,7 +140,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_use(self, line):
         "use {tablename}"
-        self.table = self.conn.get_table_params(line)
+        self.table = self.conn.get_table(line)
         self.pprint(self.conn.describe_table(self.table.name))
         self.prompt = "%s> " % self.table.name
 
@@ -171,7 +171,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def do_delete(self, line):
         "delete {tablename}"
-        self.conn.delete_table(self.conn.get_table_params(line))
+        self.conn.delete_table(self.conn.get_table(line))
 
     def do_refresh(self, line):
         "refresh {table_name}"
@@ -210,6 +210,14 @@ class DynamoDBShell(cmd.Cmd):
         else:
             op = "u"
 
+        if attr[0] == '+':
+            ret, attr = attr.split(" ", 1)
+            ret = ret[1:]
+        else:
+            ret = "ALL_OLD"
+
+        print "op:%s, ret:%s, attr:%s" % (op, ret, attr)
+
         item = table.new_item(hash_key=hkey)
 
         attr = json.loads(attr.strip())
@@ -226,7 +234,7 @@ class DynamoDBShell(cmd.Cmd):
                 item.put_attribute(name, value)
 
         self.pprint(item)
-        updated = item.save(return_values='ALL_OLD')
+        updated = item.save(return_values=ret)
         self.pprint(updated)
 
     def do_get(self, line):
@@ -318,7 +326,7 @@ class DynamoDBShell(cmd.Cmd):
                 args = [ self.table.name ]
 
             while args:
-                table = self.conn.get_table_params(args.pop(0))
+                table = self.conn.get_table(args.pop(0))
                 print "from table " + table.name
 
                 for item in table.scan(attributes_to_get=[]):
