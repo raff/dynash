@@ -11,6 +11,10 @@ You can create/delete/list/describe tables, add/modify/delete/list records and m
 
 - delete {tablename}: delete table
 
+- describe {tablename}: describe table
+
+- capacity {tablename} {read_capacity} {write_capacity}: update table capacity
+
 - use {tablename}: select table
 
 - scan/l: list table content
