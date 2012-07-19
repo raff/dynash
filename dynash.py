@@ -34,6 +34,7 @@ except ImportError:
 import ast
 import boto
 import boto.dynamodb.exceptions as dynamodb_exceptions
+from boto.dynamodb.condition import *
 import json
 import mimetypes
 import logging
@@ -214,9 +215,7 @@ class DynamoDBShell(cmd.Cmd):
             ret, attr = attr.split(" ", 1)
             ret = ret[1:]
         else:
-            ret = "ALL_OLD"
-
-        print "op:%s, ret:%s, attr:%s" % (op, ret, attr)
+            ret = "ALL_NEW"
 
         item = table.new_item(hash_key=hkey)
 
@@ -238,7 +237,12 @@ class DynamoDBShell(cmd.Cmd):
         self.pprint(updated)
 
     def do_get(self, line):
-        "get [:tablename] {haskkey} [rangekey]"
+        """
+        get [:tablename] {haskkey} [rangekey]
+        or
+        get [:tablename] (hashkey, rangekey),...
+        """
+
         table, line = self.get_table_params(line)
 
         if line.startswith('(') or line.startswith('[') or line.find(",") > 0:
@@ -294,13 +298,24 @@ class DynamoDBShell(cmd.Cmd):
         "scan [:tablename] [attributes,...]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
+
+        scan_filter = {}
+
+        while args and args[0].startswith('+'):
+            arg = args.pop(0)
+            filter = arg[1:].split(':', 1)
+            scan_filter[filter[0]] = EQ(filter[1])
+
+        if scan_filter:
+            print scan_filter
+
         attrs = args[0].split(",") if args else None
 
-        for item in table.scan(attributes_to_get=attrs):
+        for item in table.scan(scan_filter=scan_filter, attributes_to_get=attrs):
             self.pprint(item)
 
     def do_query(self, line):
-        "query [:tablename] hkey [attributes,...] [asc|desc]"
+        "query [:tablename] hkey [-r] [attributes,...]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
