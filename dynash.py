@@ -295,7 +295,7 @@ class DynamoDBShell(cmd.Cmd):
             item.delete()
 
     def do_scan(self, line):
-        "scan [:tablename] [attributes,...]"
+        "scan [:tablename] [+filter_attribute:filter_value] [attributes,...]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
