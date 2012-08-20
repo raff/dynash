@@ -67,6 +67,7 @@ class DynamoDBShell(cmd.Cmd):
         self.table = None
         self.consistent = False
         self.print_time = False
+        self.print_consumed = False
         self.pretty_print = True
         self.verbose = False
         self.start_time = None
@@ -100,6 +101,20 @@ class DynamoDBShell(cmd.Cmd):
             return self.conn.get_table(line)
         else:
             return self.table
+
+    def do_login(self, line):
+        "login aws-acces-key aws-secret"
+        if line:
+            args = self.getargs(line)
+
+            self.conn = boto.connect_dynamodb(
+                aws_access_key_id=args[0],
+                aws_secret_access_key=args[1])
+        else:
+            self.conn = boto.connect_dynamodb()
+            
+
+        self.do_tables('')
 
     def do_tables(self, line):
         "List tables"
@@ -200,6 +215,9 @@ class DynamoDBShell(cmd.Cmd):
         item = json.loads(line)
         table.new_item(None, None, item).put()
 
+        if self.print_consumed:
+            print "consumed units:", item.consumed_units
+
     def do_update(self, line):
         "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
         table, line = self.get_table_params(line)
@@ -235,6 +253,9 @@ class DynamoDBShell(cmd.Cmd):
         self.pprint(item)
         updated = item.save(return_values=ret)
         self.pprint(updated)
+
+        if self.print_consumed:
+            print "consumed units:", item.consumed_units
 
     def do_get(self, line):
         """
@@ -283,6 +304,9 @@ class DynamoDBShell(cmd.Cmd):
                 consistent_read=self.consistent)
             self.pprint(item)
 
+            if self.print_consumed:
+                print "consumed units:", item.consumed_units
+
     def do_rm(self, line):
         "rm [:tablename] {haskkey} [rangekey]"
         table, line = self.get_table_params(line)
@@ -311,8 +335,11 @@ class DynamoDBShell(cmd.Cmd):
 
         attrs = args[0].split(",") if args else None
 
-        for item in table.scan(scan_filter=scan_filter, attributes_to_get=attrs):
-            self.pprint(item)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs)
+        self.pprint(list(result))
+
+        if self.print_consumed:
+            print "consumed units:", result.consumed_units
 
     def do_query(self, line):
         "query [:tablename] hkey [-r] [attributes,...]"
@@ -328,8 +355,13 @@ class DynamoDBShell(cmd.Cmd):
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
 
-        for item in table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc):
+        result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc)
+
+        for item in result:
             self.pprint(item)
+
+        if self.print_consumed:
+            print "consumed units:", result.consumed_units
 
     def do_rmall(self, line):
         "remove [tablename...] yes"
@@ -355,6 +387,12 @@ class DynamoDBShell(cmd.Cmd):
             self.print_time = self.is_on(line)
 
         print "print elapsed time: %s" % self.print_time
+
+    def do_consumed(self, line):
+        if line:
+            self.print_consumed = self.is_on(line)
+
+        print "print consumed units: %s" % self.print_consumed
 
     def do_consistent(self, line):
         if line:
