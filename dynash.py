@@ -26,14 +26,28 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+if __name__ == '__main__':
+    import sys
+    if '--cmd2' in sys.argv:
+        _CMD2_REQUIRED = True
+        sys.argv.remove('--cmd2')
+    else:
+        _CMD2_REQUIRED = False
+
 try:
     import cmd2 as cmd
 except ImportError:
-    import cmd
+    if _CMD2_REQUIRED:
+        print ""
+        print "cmd2 is not installed: please install and try again"
+        print ""
+        raise
+    else:
+        import cmd
 
 import ast
 import boto
-import boto.dynamodb.exceptions as dynamodb_exceptions
+from boto.dynamodb.exceptions import DynamoDBResponseError, BotoClientError
 from boto.dynamodb.condition import *
 import json
 import mimetypes
@@ -49,6 +63,31 @@ import traceback
 import types
 
 from os.path import basename
+
+##########################################
+#
+# Monkey patch boto to support count results
+#
+
+from boto.dynamodb import layer2
+
+class TableGenerator(layer2.TableGenerator):
+
+    def __init__(self, table, callable, max_results, item_class, kwargs):
+        _original_TableGenerator.__init__(self, table, callable, max_results, item_class, kwargs)
+
+        if kwargs['count']:
+            response = self.callable(**self.kwargs)
+            self.consumed_units = response['ConsumedCapacityUnits'] if 'ConsumedCapacityUnits' in response else 0
+            self.count = response['Count'] if 'Count' in response else 0
+            self.scanned_count = response['ScannedCount'] if 'ScannedCount' in response else 0
+
+
+_original_TableGenerator = layer2.TableGenerator
+layer2.TableGenerator = TableGenerator
+
+#
+##########################################
 
 class DynamoDBShell(cmd.Cmd):
 
@@ -76,6 +115,20 @@ class DynamoDBShell(cmd.Cmd):
             print self.pp.pformat(object)
         else:
             print str(object)
+
+    def print_iterator(self, gen):
+        prev = None
+        print "["
+
+        for next in gen:
+            if prev:
+                print "  %s," % prev
+            prev = next
+
+        if prev:
+            print "  %s" % prev
+
+        print "]"
 
     def getargs(self, line):
         return shlex.split(str(line.decode('string-escape')))
@@ -300,19 +353,39 @@ class DynamoDBShell(cmd.Cmd):
         args = self.getargs(line)
 
         scan_filter = {}
+        count = False
 
-        while args and args[0].startswith('+'):
-            arg = args.pop(0)
-            filter = arg[1:].split(':', 1)
-            scan_filter[filter[0]] = EQ(filter[1])
+        while args:
+            if args[0].startswith('+'):
+                arg = args.pop(0)
+                filter = arg[1:].split(':', 1)
+                scan_filter[filter[0]] = EQ(filter[1])
+
+            elif args[0].startswith('-'):
+                arg = args.pop(0)
+
+                if arg == '-c':
+                    count = True
+                elif arg == '--':
+                    break
+                else:
+                    print "invalid argument: %s" % arg
+                    break
+
+            else:
+                break
 
         if scan_filter:
             print scan_filter
 
         attrs = args[0].split(",") if args else None
 
-        for item in table.scan(scan_filter=scan_filter, attributes_to_get=attrs):
-            self.pprint(item)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, count=count)
+
+        if count:
+            print "count: %s" % result.scanned_count
+        else:
+            self.print_iterator(result)
 
     def do_query(self, line):
         "query [:tablename] hkey [-r] [attributes,...]"
@@ -324,12 +397,22 @@ class DynamoDBShell(cmd.Cmd):
             args.remove('-r')
         else:
             asc = True
+
+        if '-c' in args:
+            count = True
+            args.remove('-c')
+        else:
+            count = False
         
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
 
-        for item in table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc):
-            self.pprint(item)
+        result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc, count=count)
+
+        if count:
+            print "count: %s" % result.count
+        else:
+            self.print_iterator(result)
 
     def do_rmall(self, line):
         "remove [tablename...] yes"
@@ -407,7 +490,7 @@ class DynamoDBShell(cmd.Cmd):
         except IndexError:
             print "invalid number of arguments"
             return False
-        except dynamodb_exceptions.DynamoDBResponseError, dberror:
+        except (DynamoDBResponseError, BotoClientError) as dberror:
             print self.pp.pformat(dberror)
         except:
             traceback.print_exc()
