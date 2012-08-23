@@ -271,6 +271,26 @@ class DynamoDBShell(cmd.Cmd):
         if self.print_consumed:
             print "consumed units:", item.consumed_units
 
+    def do_import(self, line):
+        "import [:tablename] filename|list"
+        table, line = self.get_table_params(line)
+        if line[0] == '[':
+            list = ast.literal_eval(line)
+        else:
+            with open(line) as f:
+                list = ast.literal_eval(f.read())
+
+        items = 0
+        consumed = 0
+
+        for item in list:
+            table.new_item(None, None, item).put()
+            #consumed += item.consumed_units
+            items += 1
+            print item['id']
+
+        print "imported %s items, consumed units:%s" % (items, consumed) 
+
     def do_update(self, line):
         "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
         table, line = self.get_table_params(line)
