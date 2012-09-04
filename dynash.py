@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 Raffaele Sena http://www.aromatic.org/
+# Copyright (c) 2012 Raffaele Sena https://github.com/raff
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the
@@ -25,6 +25,8 @@
 
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
+__version__ = '0.5.1'
 
 if __name__ == '__main__':
     import sys
@@ -238,8 +240,8 @@ class DynamoDBShell(cmd.Cmd):
             5, 5)
         self.pprint(self.conn.describe_table(t.name))
 
-    def do_delete(self, line):
-        "delete {tablename}"
+    def do_drop(self, line):
+        "drop {tablename}"
         self.conn.delete_table(self.conn.get_table(line))
 
     def do_refresh(self, line):
@@ -256,11 +258,37 @@ class DynamoDBShell(cmd.Cmd):
         read_units = int(args[1])
         write_units = int(args[2])
 
-        table.update_throughput(read_units, write_units)
-        print "capacity for %s updated to %d read units, %d write units" % (table.name, read_units, write_units)
-        print ""
-        self.do_refresh(table.name)
+        desc = self.conn.describe_table(table.name)
+        prov = desc['Table']['ProvisionedThroughput']
 
+        current_read, current_write = prov['ReadCapacityUnits'], prov['WriteCapacityUnits']
+
+        if read_units < current_read or write_units < current_write:
+            table.update_throughput(read_units, write_units)
+            print "%s: updating capacity to %d read units, %d write units" % (table.name, read_units, write_units)
+            print ""
+            self.do_refresh(table.name)
+
+        else:
+            print "%s: current capacity is %d read units, %d write units" % (table.name, current_read, current_write)
+            # we can only double the current value at each call
+            while current_read < read_units and current_write < write_units:
+                if (read_units - current_read) > current_read:
+                    current_read *= 2
+                else:
+                    current_read = read_units
+
+                if (write_units - current_write) > current_write:
+                    current_write *= 2
+                else:
+                    current_write = write_units
+
+                print "%s: updating capacity to %d read units, %d write units" % (table.name, current_read, current_write)
+                table.update_throughput(current_read, current_write)
+
+                print ""
+                self.do_refresh(table.name)
+                print ""
 
     def do_put(self, line):
         "put [:tablename] {json-body}"
@@ -334,7 +362,8 @@ class DynamoDBShell(cmd.Cmd):
         """
         get [:tablename] {haskkey} [rangekey]
         or
-        get [:tablename] (hashkey, rangekey),...
+        get [:tablename] ((hkey,rkey), (hkey,rkey)...)
+
         """
 
         table, line = self.get_table_params(line)
@@ -527,7 +556,8 @@ class DynamoDBShell(cmd.Cmd):
 
     do_ls = do_tables
     do_mkdir = do_create
-    do_rmdir = do_delete
+    do_rmdir = do_drop
+    do_delete = do_drop
     do_cd = do_use
     do_q = do_query
     do_l = do_scan
@@ -552,6 +582,13 @@ class DynamoDBShell(cmd.Cmd):
             traceback.print_exc()
             return False
 
+    def default(self, line):
+        line = line.strip()
+        if line and line[0] in ['#', '!']:
+            return False
+        else:
+            return cmd.Cmd.default(self, line)
+
     def completedefault(self, test, line, beginidx, endidx):
         list=[]
 
@@ -562,7 +599,7 @@ class DynamoDBShell(cmd.Cmd):
         return list
 
     def preloop(self):
-        print "\nA simple shell to interact with DynamoDB"
+        print "\ndynash %s: A simple shell to interact with DynamoDB" % __version__
         try:
             self.do_tables('')
         except:
@@ -584,7 +621,9 @@ class DynamoDBShell(cmd.Cmd):
             print "elapsed time: %.3f" % t
         return stop
 
+def run_command():
+    DynamoDBShell().cmdloop()
 
 
 if __name__ == '__main__':
-    DynamoDBShell().cmdloop()
+    run_command()
