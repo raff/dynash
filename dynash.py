@@ -584,7 +584,7 @@ class DynamoDBShell(cmd.Cmd):
 
     def default(self, line):
         line = line.strip()
-        if line and line[0] in ['#', '!']:
+        if line and line[0] in ['#', ';']:
             return False
         else:
             return cmd.Cmd.default(self, line)
