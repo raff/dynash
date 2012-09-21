@@ -45,10 +45,11 @@ except ImportError:
     else:
         import cmd
 
-import ast
 import boto
 from boto.dynamodb.exceptions import DynamoDBResponseError, BotoClientError
 from boto.dynamodb.condition import *
+
+import ast
 import json
 import mimetypes
 import logging
@@ -77,11 +78,29 @@ class TableGenerator(layer2.TableGenerator):
         _original_TableGenerator.__init__(self, table, callable, max_results, item_class, kwargs)
 
         if kwargs['count']:
-            response = self.callable(**self.kwargs)
-            self.consumed_units = response['ConsumedCapacityUnits'] if 'ConsumedCapacityUnits' in response else 0
-            self.count = response['Count'] if 'Count' in response else 0
-            self.scanned_count = response['ScannedCount'] if 'ScannedCount' in response else 0
+            self.count = 0
+            self.scanned_count = 0
+            self.consumed_units = 0
 
+            response = True
+            while response:
+                response = self.callable(**self.kwargs)
+
+                if 'ConsumedCapacityUnits' in response:
+                    self.consumed_units += response['ConsumedCapacityUnits']
+
+                if 'Count' in response:
+                    self.count += response['Count']
+
+                if 'ScannedCount' in response:
+                    self.scanned_count += response['ScannedCount']
+
+                if 'LastEvaluatedKey' in response:
+                    lek = response['LastEvaluatedKey']
+                    esk = self.table.layer2.dynamize_last_evaluated_key(lek)
+                    self.kwargs['exclusive_start_key'] = esk
+                else:
+                    break
 
 _original_TableGenerator = layer2.TableGenerator
 layer2.TableGenerator = TableGenerator
@@ -419,15 +438,15 @@ class DynamoDBShell(cmd.Cmd):
             else:
                 break
 
-        if scan_filter:
-            print scan_filter
+        #if scan_filter:
+        #    print scan_filter
 
         attrs = args[0].split(",") if args else None
 
         result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, count=count)
 
         if count:
-            print "count: %s" % result.scanned_count
+            print "count: %s/%s" % (result.scanned_count, result.count)
         else:
             self.print_iterator(result)
 
