@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 from setuptools import setup
+from dynash import __version__
 
 SETUP_OPTIONS = dict(
     name='dynash',
-    version='0.5.1',
+    version=__version__,
     description='Command line client for DynamoDB',
     long_description = open("README.md").read(),
     author='Raffaele Sena',
