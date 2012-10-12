@@ -23,7 +23,8 @@ SETUP_OPTIONS = dict(
 
     install_requires=['distribute',
                       'setuptools >= 0.6c11',
-                      'boto >= 2.5.1'
+                      'boto >= 2.6.0',
+                      'cmd2',
                       ],
 
     entry_points="""

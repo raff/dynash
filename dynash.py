@@ -26,26 +26,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-__version__ = '0.6.0'
+__version__ = '0.6.1'
 
-if __name__ == '__main__':
-    import sys
-    if '--cmd2' in sys.argv:
-        _CMD2_REQUIRED = True
-        sys.argv.remove('--cmd2')
-    else:
-        _CMD2_REQUIRED = False
-
-try:
-    import cmd2 as cmd
-except ImportError:
-    if _CMD2_REQUIRED:
-        print ""
-        print "cmd2 is not installed: please install and try again"
-        print ""
-        raise
-    else:
-        import cmd
+from cmd2 import Cmd
 
 import boto
 from boto.dynamodb.exceptions import DynamoDBResponseError, BotoClientError
@@ -110,12 +93,31 @@ layer2.TableGenerator = TableGenerator
 #
 ##########################################
 
-class DynamoDBShell(cmd.Cmd):
+class DynamoDBShell(Cmd):
 
     prompt = "dynash> "
 
+    consistent = False
+    consumed = False
+    pretty = True
+    verbose = False
+
+    settable = Cmd.settable + """
+        consistent consistent reads vs. eventual consistency
+        consumed print consumed units
+        prompt command prompt
+        pretty pretty-print results
+        verbose verbose logging of boto requests
+        """
+
+    def _onchange_verbose(self, old, new):
+        if new:
+            boto.set_stream_logger('boto', level=logging.DEBUG)
+        else:
+            boto.set_stream_logger('boto', level=logging.WARNING)
+
     def __init__(self):
-        cmd.Cmd.__init__(self)
+        Cmd.__init__(self)
 
         self.pp = pprint.PrettyPrinter(indent=4)
 
@@ -126,14 +128,11 @@ class DynamoDBShell(cmd.Cmd):
         self.tables = []
         self.table = None
         self.consistent = False
-        self.print_time = False
         self.print_consumed = False
-        self.pretty_print = True
         self.verbose = False
-        self.start_time = None
 
     def pprint(self, object):
-        if self.pretty_print:
+        if self.pretty:
             print self.pp.pformat(object)
         else:
             print str(object)
@@ -530,47 +529,9 @@ class DynamoDBShell(cmd.Cmd):
         else:
             print "ok, never mind..."
 
-    def do_elapsed(self, line):
-        if line:
-            self.print_time = self.is_on(line)
-
-        print "print elapsed time: %s" % self.print_time
-
-    def do_consumed(self, line):
-        if line:
-            self.print_consumed = self.is_on(line)
-
-        print "print consumed units: %s" % self.print_consumed
-
-    def do_consistent(self, line):
-        if line:
-            self.consistent = self.is_on(line)
-
-        print "use consistent reads: %s" % self.consistent
-
-    def do_pretty(self, line):
-        if line:
-            self.pretty_print = self.is_on(line)
-
-        print "pretty output: %s" % self.pretty_print
-
-    def do_verbose(self, line):
-        if line:
-            self.verbose = self.is_on(line)
-
-        print "verbose output: %s" % self.verbose
-        if self.verbose:
-            boto.set_stream_logger('boto', level=logging.DEBUG)
-        else:
-            boto.set_stream_logger('boto', level=logging.INFO)
-
     def do_EOF(self, line):
         "Exit shell"
         return True
-
-    def do_shell(self, line):
-        "Shell"
-        os.system(line)
 
     do_ls = do_tables
     do_mkdir = do_create
@@ -590,22 +551,24 @@ class DynamoDBShell(cmd.Cmd):
 
     def onecmd(self, s):
         try:
-            return cmd.Cmd.onecmd(self, s)
+            return Cmd.onecmd(self, s)
         except IndexError:
             print "invalid number of arguments"
             return False
+        except NotImplementedError as e:
+            print e.message
         except (DynamoDBResponseError, BotoClientError) as dberror:
             print self.pp.pformat(dberror)
         except:
             traceback.print_exc()
-            return False
+        return False
 
     def default(self, line):
         line = line.strip()
         if line and line[0] in ['#', ';']:
             return False
         else:
-            return cmd.Cmd.default(self, line)
+            return Cmd.default(self, line)
 
     def completedefault(self, test, line, beginidx, endidx):
         list=[]
@@ -625,19 +588,6 @@ class DynamoDBShell(cmd.Cmd):
 
     def postloop(self):
         print "Goodbye!"
-
-    def precmd(self, line):
-        if self.print_time:
-            self.start_time = time.time()
-        else:
-            self.start_time = None
-        return line
-
-    def postcmd(self, stop, line):
-        if self.start_time:
-            t = time.time() - self.start_time
-            print "elapsed time: %.3f" % t
-        return stop
 
 def run_command():
     DynamoDBShell().cmdloop()

@@ -39,4 +39,9 @@ and many more (use 'help' to find the available commands)
  
 - Command completion is enabled (and it will complete table names)
 
-- If you have Cmd2 installed in your python environment, dynash will use it instead of Cmd, and you'll be able to use the extra features, like file redirections and stuff (see http://packages.python.org/cmd2/)
+- You can set various flags (like debug, verbose, pretty-print, etc.) using the 'set' command (try 'set -l')k
+
+- You can redirect the output of commands using standard shell redirection ( > outfile )
+
+- You can execute shell commands using '!shell command'
+
