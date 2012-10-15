@@ -26,7 +26,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-__version__ = '0.6.1'
+from version import __version__
 
 from cmd2 import Cmd
 

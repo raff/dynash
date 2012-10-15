@@ -15,7 +15,7 @@ SETUP_OPTIONS = dict(
     license = "MIT",
     platforms = "Posix; MacOS X; Windows",
 
-    py_modules=['dynash'
+    packages=['dynash'
               ],
 
     data_files=[('.', ['README.md'])
@@ -29,10 +29,9 @@ SETUP_OPTIONS = dict(
 
     entry_points="""
     [console_scripts]
-    dynash=dynash:run_command
+    dynash=dynash.dynash:run_command
     """
     )
-
 
 def do_setup():
     setup(**SETUP_OPTIONS)
