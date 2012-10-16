@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from setuptools import setup
+try:
+    from setuptools import setup
+except ImportError:
+    from distutils.core import setup
+
 from dynash import __version__
 
 SETUP_OPTIONS = dict(
@@ -14,6 +18,18 @@ SETUP_OPTIONS = dict(
     url='https://github.com/raff/dynash',
     license = "MIT",
     platforms = "Posix; MacOS X; Windows",
+    classifiers = [
+        'Development Status :: 4 - Beta',
+        'Environment :: Other Environment',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: OS Independent',
+        'Topic :: Internet',
+        'Topic :: Utilities',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7'
+    ],
 
     packages=['dynash'
               ],
@@ -21,9 +37,7 @@ SETUP_OPTIONS = dict(
     data_files=[('.', ['README.md'])
                ],
 
-    install_requires=['distribute',
-                      'setuptools >= 0.6c11',
-                      'boto >= 2.6.0',
+    install_requires=['boto >= 2.6.0',
                       'cmd2',
                       ],
 
