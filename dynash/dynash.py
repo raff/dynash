@@ -42,13 +42,18 @@ import os
 import os.path
 import pprint
 import re
-import readline
 import shlex
 import time
 import traceback
 import types
 
 from os.path import basename
+
+try:
+    import readline
+except ImportError:
+    # Windows doesn't have readline!
+    readline = None
 
 ##########################################
 #
@@ -93,6 +98,8 @@ layer2.TableGenerator = TableGenerator
 #
 ##########################################
 
+HISTORY_FILE = ".dynash_history"
+
 class DynamoDBShell(Cmd):
 
     prompt = "dynash> "
@@ -124,7 +131,14 @@ class DynamoDBShell(Cmd):
         self.conn = boto.connect_dynamodb()
 
         # by default readline thinks - and other characters are word delimiters :(
-        readline.set_completer_delims(re.sub('[-~]', '', readline.get_completer_delims()))
+        if readline:
+            readline.set_completer_delims(re.sub('[-~]', '', readline.get_completer_delims()))
+
+            path = os.path.join(os.environ.get('HOME', ''), HISTORY_FILE)
+            self.history_file = os.path.abspath(path)
+        else:
+            self.history_file = None
+
         self.tables = []
         self.table = None
         self.consistent = False
@@ -581,12 +595,20 @@ class DynamoDBShell(Cmd):
 
     def preloop(self):
         print "\ndynash %s: A simple shell to interact with DynamoDB" % __version__
+
+        if self.history_file and os.path.exists(self.history_file):
+            readline.read_history_file(self.history_file)
+
         try:
             self.do_tables('')
         except:
             traceback.print_exc()
 
     def postloop(self):
+        if self.history_file:
+            readline.set_history_length(100)
+            readline.write_history_file(self.history_file)
+
         print "Goodbye!"
 
 def run_command():
