@@ -1,12 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dynash import __version__
+import sys
+
 try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
 
-from dynash import __version__
+if sys.version_info <= (2, 5):
+    error = "ERROR: dynash %s requires Python Version 2.6 or above...exiting." % __version__
+    print >> sys.stderr, error
+    sys.exit(1)
 
 SETUP_OPTIONS = dict(
     name='dynash',
@@ -20,7 +26,7 @@ SETUP_OPTIONS = dict(
     platforms = "Posix; MacOS X; Windows",
     classifiers = [
         'Development Status :: 4 - Beta',
-        'Environment :: Other Environment',
+        'Environment :: Console',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
