@@ -15,7 +15,7 @@
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 # OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABIL-
 # ITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-# SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+# SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 
@@ -36,24 +36,30 @@ from boto.dynamodb.condition import *
 
 import ast
 import json
-import mimetypes
 import logging
 import os
 import os.path
 import pprint
 import re
 import shlex
-import time
+import sys
 import traceback
-import types
 
-from os.path import basename
 
 try:
     import readline
 except ImportError:
-    # Windows doesn't have readline!
-    readline = None
+    try:
+        import pyreadline as readline
+    except ImportError:
+        readline = None
+else:
+    import rlcompleter
+    if(sys.platform == 'darwin'):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
 
 ##########################################
 #
@@ -61,6 +67,7 @@ except ImportError:
 #
 
 from boto.dynamodb import layer2
+
 
 class TableGenerator(layer2.TableGenerator):
 
@@ -99,6 +106,7 @@ layer2.TableGenerator = TableGenerator
 ##########################################
 
 HISTORY_FILE = ".dynash_history"
+
 
 class DynamoDBShell(Cmd):
 
@@ -171,9 +179,6 @@ class DynamoDBShell(Cmd):
     def gettype(self, stype):
         return stype.upper()[0]
 
-    def is_on(self, line):
-        return line.lower() in [ 'yes', 'true', 'on', '1' ]
-
     def get_table_params(self, line):
         if line and line[0] == ':':
             parts = line.split(" ", 1)
@@ -199,7 +204,6 @@ class DynamoDBShell(Cmd):
                 aws_secret_access_key=args[1])
         else:
             self.conn = boto.connect_dynamodb()
-            
 
         self.do_tables('')
 
@@ -217,7 +221,7 @@ class DynamoDBShell(Cmd):
             line = parts[1].strip() if len(parts) > 1 else None
         else:
             create_info = False
-            
+
         table = line or self.table.name
         desc = self.conn.describe_table(table)
 
@@ -237,7 +241,7 @@ class DynamoDBShell(Cmd):
 
             prov = info['ProvisionedThroughput']
             prov = " -rc:%d -wc:%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
-            print "create %s %s%s" % ( name, hkey, rkey )
+            print "create %s %s%s" % (name, hkey, rkey)
         else:
             self.pprint(desc)
 
@@ -267,9 +271,9 @@ class DynamoDBShell(Cmd):
         else:
             rkey = rkey_type = None
 
-        t = self.conn.create_table(name, 
-            self.conn.create_schema(hkey, hkey_type, rkey, rkey_type),
-            5, 5)
+        t = self.conn.create_table(name,
+                                   self.conn.create_schema(hkey, hkey_type, rkey, rkey_type),
+                                   5, 5)
         self.pprint(self.conn.describe_table(t.name))
 
     def do_drop(self, line):
@@ -348,7 +352,7 @@ class DynamoDBShell(Cmd):
             items += 1
             print item['id']
 
-        print "imported %s items, consumed units:%s" % (items, consumed) 
+        print "imported %s items, consumed units:%s" % (items, consumed)
 
     def do_update(self, line):
         "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
@@ -414,7 +418,7 @@ class DynamoDBShell(Cmd):
                 else:
                     hkey = unicode(id[0])
                     hkey = unicode(id[1])
-                    
+
                 ordered[(hkey, rkey)] = None
 
             batch = self.conn.new_batch_list()
@@ -425,7 +429,7 @@ class DynamoDBShell(Cmd):
             rkey = table.schema.range_key_name
 
             for item in response['Responses'][table.name]['Items']:
-                ordered[(item.get(hkey),item.get(rkey))] = item
+                ordered[(item.get(hkey), item.get(rkey))] = item
 
             self.pprint(filter(None, ordered.values()))
         else:
@@ -434,7 +438,7 @@ class DynamoDBShell(Cmd):
             rkey = args[1] if len(args) > 1 else None
 
             item = table.get_item(hkey, rkey,
-                consistent_read=self.consistent)
+                                  consistent_read=self.consistent)
             self.pprint(item)
 
             if self.print_consumed:
@@ -447,7 +451,7 @@ class DynamoDBShell(Cmd):
         hkey = args[0]
         rkey = args[1] if len(args) > 1 else None
         item = table.get_item(hkey, rkey, [],
-            consistent_read=self.consistent)
+                              consistent_read=self.consistent)
         if item:
             item.delete()
 
@@ -510,7 +514,7 @@ class DynamoDBShell(Cmd):
             args.remove('-c')
         else:
             count = False
-        
+
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
 
@@ -531,7 +535,7 @@ class DynamoDBShell(Cmd):
             args.pop()
 
             if not args:
-                args = [ self.table.name ]
+                args = [self.table.name]
 
             while args:
                 table = self.conn.get_table(args.pop(0))
@@ -585,7 +589,7 @@ class DynamoDBShell(Cmd):
             return Cmd.default(self, line)
 
     def completedefault(self, test, line, beginidx, endidx):
-        list=[]
+        list = []
 
         for t in self.tables:
             if t.startswith(test):
@@ -610,6 +614,7 @@ class DynamoDBShell(Cmd):
             readline.write_history_file(self.history_file)
 
         print "Goodbye!"
+
 
 def run_command():
     DynamoDBShell().cmdloop()
