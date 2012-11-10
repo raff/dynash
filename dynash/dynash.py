@@ -74,7 +74,7 @@ class TableGenerator(layer2.TableGenerator):
     def __init__(self, table, callable, max_results, item_class, kwargs):
         _original_TableGenerator.__init__(self, table, callable, max_results, item_class, kwargs)
 
-        if kwargs['count']:
+        if 'count' in kwargs and kwargs['count']:
             self.count = 0
             self.scanned_count = 0
             self.consumed_units = 0
@@ -456,12 +456,13 @@ class DynamoDBShell(Cmd):
             item.delete()
 
     def do_scan(self, line):
-        "scan [:tablename] [+filter_attribute:filter_value] [attributes,...]"
+        "scan [:tablename] [-{max}] [+filter_attribute:filter_value] [attributes,...]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
         scan_filter = {}
         count = False
+        max = None
 
         while args:
             if args[0].startswith('+'):
@@ -474,8 +475,13 @@ class DynamoDBShell(Cmd):
 
                 if arg == '-c':
                     count = True
+
+                elif arg[0] == '-' and arg[1].isdigit():
+                    max = arg[1:]
+
                 elif arg == '--':
                     break
+
                 else:
                     print "invalid argument: %s" % arg
                     break
@@ -488,7 +494,7 @@ class DynamoDBShell(Cmd):
 
         attrs = args[0].split(",") if args else None
 
-        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, count=count)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, max_results=max, count=count)
 
         if count:
             print "count: %s/%s" % (result.scanned_count, result.count)
@@ -499,9 +505,11 @@ class DynamoDBShell(Cmd):
             print "consumed units:", result.consumed_units
 
     def do_query(self, line):
-        "query [:tablename] hkey [-r] [attributes,...]"
+        "query [:tablename] [-r] [-{max}] hkey [attributes,...]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
+
+        max = None
 
         if '-r' in args:
             asc = False
@@ -509,21 +517,15 @@ class DynamoDBShell(Cmd):
         else:
             asc = True
 
-        if '-c' in args:
-            count = True
-            args.remove('-c')
-        else:
-            count = False
+        arg = args[0]
+        if arg[0] == '-' and arg[1].isdigit():
+            max = int(arg[1:])
+            args.pop(0)
 
         hkey = args[0]
         attrs = args[1].split(",") if len(args) > 1 else None
 
-        result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc, count=count)
-
-        if count:
-            print "count: %s" % result.count
-        else:
-            self.print_iterator(result)
+        result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc, max_results=max)
 
         if self.print_consumed:
             print "consumed units:", result.consumed_units
