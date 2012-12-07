@@ -194,6 +194,23 @@ class DynamoDBShell(Cmd):
         else:
             return self.table
 
+    def get_typed_value(self, table, value, is_hash=True):
+        schema = table.schema
+
+        keytype = schema.hash_key_type if is_hash else schema.range_key_type
+        if not keytype:
+            return value
+
+        try:
+            if keytype == 'S':
+                return str(value)
+            if keytype == 'N':
+                return float(value) if '.' in value else int(value)
+        except:
+            pass
+
+        return value
+
     def do_login(self, line):
         "login aws-acces-key aws-secret"
         if line:
@@ -371,7 +388,7 @@ class DynamoDBShell(Cmd):
         else:
             ret = "ALL_NEW"
 
-        item = table.new_item(hash_key=hkey)
+        item = table.new_item(hash_key=self.get_typed_value(table, hkey))
 
         attr = json.loads(attr.strip())
         for name in attr.keys():
@@ -403,7 +420,7 @@ class DynamoDBShell(Cmd):
 
         table, line = self.get_table_params(line)
 
-        if line.startswith('(') or line.startswith('[') or line.find(",") > 0:
+        if line.startswith('(') or line.startswith('[') or "," in line:
             # list of IDs
             list = ast.literal_eval(line)
             print ">> get %s" % str(list)
@@ -413,11 +430,11 @@ class DynamoDBShell(Cmd):
             ordered = OrderedDict()
             for id in list:
                 if not isinstance(id, tuple):
-                    hkey = unicode(id)
+                    hkey = self.get_typed_value(table, unicode(id))
                     rkey = None
                 else:
-                    hkey = unicode(id[0])
-                    hkey = unicode(id[1])
+                    hkey = self.get_typed_value(table, unicode(id[0]), True)
+                    rkey = self.get_typed_value(table, unicode(id[1]), False)
 
                 ordered[(hkey, rkey)] = None
 
@@ -434,8 +451,8 @@ class DynamoDBShell(Cmd):
             self.pprint(filter(None, ordered.values()))
         else:
             args = self.getargs(line)
-            hkey = args[0]
-            rkey = args[1] if len(args) > 1 else None
+            hkey = self.get_typed_value(table, args[0], True)
+            rkey = self.get_typed_value(table, args[1], False) if len(args) > 1 else None
 
             item = table.get_item(hkey, rkey,
                                   consistent_read=self.consistent)
@@ -448,8 +465,8 @@ class DynamoDBShell(Cmd):
         "rm [:tablename] {haskkey} [rangekey]"
         table, line = self.get_table_params(line)
         args = self.getargs(line)
-        hkey = args[0]
-        rkey = args[1] if len(args) > 1 else None
+        hkey = self.get_typed_value(table, args[0], True)
+        rkey = self.get_typed_value(table, args[1], False) if len(args) > 1 else None
         item = table.get_item(hkey, rkey, [],
                               consistent_read=self.consistent)
         if item:
@@ -522,10 +539,12 @@ class DynamoDBShell(Cmd):
             max = int(arg[1:])
             args.pop(0)
 
-        hkey = args[0]
+        hkey = self.get_typed_value(table, args[0])
         attrs = args[1].split(",") if len(args) > 1 else None
 
         result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc, max_results=max)
+
+        self.print_iterator(result)
 
         if self.print_consumed:
             print "consumed units:", result.consumed_units
