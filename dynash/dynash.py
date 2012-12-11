@@ -257,8 +257,8 @@ class DynamoDBShell(Cmd):
                 rkey = ''
 
             prov = info['ProvisionedThroughput']
-            prov = " -rc:%d -wc:%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
-            print "create %s %s%s" % (name, hkey, rkey)
+            prov = "-c %d,%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
+            print "create %s %s %s%s" % (name, prov, hkey, rkey)
         else:
             self.pprint(desc)
 
@@ -269,17 +269,31 @@ class DynamoDBShell(Cmd):
         self.prompt = "%s> " % self.table.name
 
     def do_create(self, line):
-        "create {tablename} {hkey}[:{type} {rkey}:{type}]"
+        "create {tablename} [-c rc,wc] {hkey}[:{type} {rkey}:{type}]"
         args = self.getargs(line)
-        name = args[0]
-        hkey = args[1]
+        rc = wc = 5
+
+        name = args.pop(0)  #  tablename
+
+        if args[0] == "-c": # capacity
+            args.pop(0)  # skyp -c
+
+            capacity = args.pop(0).strip()
+            if "," in capacity:
+                rc, wc = capacity.split(",")
+                rc = int(rc)
+                wc = int(wc)
+            else:
+                rc = wc = int(capacity)
+
+        hkey = args.pop(0)
         if ':' in hkey:
             hkey, hkey_type = hkey.split(':')
             hkey_type = self.gettype(hkey_type)
         else:
             hkey_type = self.gettype('S')
-        if len(args) > 2:
-            rkey = args[2]
+        if args:
+            rkey = args.pop(0)
             if ':' in rkey:
                 rkey, rkey_type = rkey.split(':')
                 rkey_type = self.gettype(rkey_type)
@@ -290,7 +304,7 @@ class DynamoDBShell(Cmd):
 
         t = self.conn.create_table(name,
                                    self.conn.create_schema(hkey, hkey_type, rkey, rkey_type),
-                                   5, 5)
+                                   rc, wc)
         self.pprint(self.conn.describe_table(t.name))
 
     def do_drop(self, line):
