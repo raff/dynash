@@ -113,7 +113,7 @@ class DynamoDBShell(Cmd):
     prompt = "dynash> "
 
     consistent = False
-    consumed = False
+    consumed = False  # this should really be print_consumed
     pretty = True
     verbose = False
 
@@ -150,7 +150,7 @@ class DynamoDBShell(Cmd):
         self.tables = []
         self.table = None
         self.consistent = False
-        self.print_consumed = False
+        self.consumed = False
         self.verbose = False
 
     def pprint(self, object):
@@ -176,7 +176,7 @@ class DynamoDBShell(Cmd):
     def getargs(self, line):
         return shlex.split(str(line.decode('string-escape')))
 
-    def gettype(self, stype):
+    def get_type(self, stype):
         return stype.upper()[0]
 
     def get_table_params(self, line):
@@ -210,6 +210,12 @@ class DynamoDBShell(Cmd):
             pass
 
         return value
+
+    def get_list(self, line):
+        try:
+            return json.loads(line)
+        except:
+            return ast.literal_eval(line)
 
     def do_login(self, line):
         "login aws-acces-key aws-secret"
@@ -289,16 +295,16 @@ class DynamoDBShell(Cmd):
         hkey = args.pop(0)
         if ':' in hkey:
             hkey, hkey_type = hkey.split(':')
-            hkey_type = self.gettype(hkey_type)
+            hkey_type = self.get_type(hkey_type)
         else:
-            hkey_type = self.gettype('S')
+            hkey_type = self.get_type('S')
         if args:
             rkey = args.pop(0)
             if ':' in rkey:
                 rkey, rkey_type = rkey.split(':')
-                rkey_type = self.gettype(rkey_type)
+                rkey_type = self.get_type(rkey_type)
             else:
-                rkey_type = self.gettype('S')
+                rkey_type = self.get_type('S')
         else:
             rkey = rkey_type = None
 
@@ -359,20 +365,34 @@ class DynamoDBShell(Cmd):
     def do_put(self, line):
         "put [:tablename] {json-body}"
         table, line = self.get_table_params(line)
-        item = json.loads(line)
-        table.new_item(None, None, item).put()
 
-        if self.print_consumed:
-            print "consumed units:", item.consumed_units
+        if line.startswith('(') or line.startswith('['):
+            list = self.get_list(line)
+            wlist = self.conn.new_batch_write_list()
+            wlist.add_batch(table, [ table.new_item(None, None, item) for item in list ])
+            response = self.conn.batch_write_item(wlist)
+            consumed = response['Responses'][table.name]['ConsumedCapacityUnits']
+
+            if 'UnprocessedItems' in response and response['UnprocessedItems']:
+                print ""
+                print "unprocessed: ", response['UnprocessedItems']
+                print ""
+        else:
+            item = json.loads(line)
+            table.new_item(None, None, item).put()
+            consumed = None
+
+        if self.consumed and consumed:
+            print "consumed units:", consumed
 
     def do_import(self, line):
         "import [:tablename] filename|list"
         table, line = self.get_table_params(line)
         if line[0] == '[':
-            list = ast.literal_eval(line)
+            list = self.get_list(line)
         else:
             with open(line) as f:
-                list = ast.literal_eval(f.read())
+                list = self.get_list(f.read())
 
         items = 0
         consumed = 0
@@ -421,7 +441,7 @@ class DynamoDBShell(Cmd):
         updated = item.save(return_values=ret)
         self.pprint(updated)
 
-        if self.print_consumed:
+        if self.consumed:
             print "consumed units:", item.consumed_units
 
     def do_get(self, line):
@@ -436,8 +456,7 @@ class DynamoDBShell(Cmd):
 
         if line.startswith('(') or line.startswith('[') or "," in line:
             # list of IDs
-            list = ast.literal_eval(line)
-            print ">> get %s" % str(list)
+            list = self.get_list(line)
 
             from collections import OrderedDict
 
@@ -472,7 +491,7 @@ class DynamoDBShell(Cmd):
                                   consistent_read=self.consistent)
             self.pprint(item)
 
-            if self.print_consumed:
+            if self.consumed:
                 print "consumed units:", item.consumed_units
 
     def do_rm(self, line):
@@ -532,7 +551,7 @@ class DynamoDBShell(Cmd):
         else:
             self.print_iterator(result)
 
-        if self.print_consumed:
+        if self.consumed:
             print "consumed units:", result.consumed_units
 
     def do_query(self, line):
@@ -560,7 +579,7 @@ class DynamoDBShell(Cmd):
 
         self.print_iterator(result)
 
-        if self.print_consumed:
+        if self.consumed:
             print "consumed units:", result.consumed_units
 
     def do_rmall(self, line):
