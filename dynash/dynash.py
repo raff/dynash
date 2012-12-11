@@ -33,6 +33,7 @@ from cmd2 import Cmd
 import boto
 from boto.dynamodb.exceptions import DynamoDBResponseError, BotoClientError
 from boto.dynamodb.condition import *
+from boto.dynamodb.types import Binary
 
 import ast
 import json
@@ -177,7 +178,23 @@ class DynamoDBShell(Cmd):
         return shlex.split(str(line.decode('string-escape')))
 
     def get_type(self, stype):
-        return stype.upper()[0]
+        if stype == 'S':
+            return "S"
+
+        if stype == 'N':
+            return 1
+
+        if stype == 'B':
+            return Binary('B')
+
+        # those are not valid key types, but anyway
+
+        if stype == 'SS':
+            return {"S"}
+
+        if stype == 'NS':
+            return {1}
+        return None
 
     def get_table_params(self, line):
         if line and line[0] == ':':
@@ -285,26 +302,16 @@ class DynamoDBShell(Cmd):
             args.pop(0)  # skyp -c
 
             capacity = args.pop(0).strip()
-            if "," in capacity:
-                rc, wc = capacity.split(",")
-                rc = int(rc)
-                wc = int(wc)
-            else:
-                rc = wc = int(capacity)
+            rc, _, wc = capacity.partition(",")
+            rc = int(rc)
+            wc = int(wc) if wc != "" else rc
 
-        hkey = args.pop(0)
-        if ':' in hkey:
-            hkey, hkey_type = hkey.split(':')
-            hkey_type = self.get_type(hkey_type)
-        else:
-            hkey_type = self.get_type('S')
+        hkey, _, hkey_type = args.pop(0).partition(':')
+        hkey_type = self.get_type(hkey_type or 'S')
+
         if args:
-            rkey = args.pop(0)
-            if ':' in rkey:
-                rkey, rkey_type = rkey.split(':')
-                rkey_type = self.get_type(rkey_type)
-            else:
-                rkey_type = self.get_type('S')
+            rkey, _, rkey_type = args.pop(0).partition(':')
+            rkey_type = self.get_type(rkey_type or 'S')
         else:
             rkey = rkey_type = None
 
@@ -363,7 +370,7 @@ class DynamoDBShell(Cmd):
                 print ""
 
     def do_put(self, line):
-        "put [:tablename] {json-body}"
+        "put [:tablename] {json-body} [{json-body}, {json-body}...]"
         table, line = self.get_table_params(line)
 
         if line.startswith('(') or line.startswith('['):
@@ -526,7 +533,7 @@ class DynamoDBShell(Cmd):
                 if arg == '-c':
                     count = True
 
-                elif arg[0] == '-' and arg[1].isdigit():
+                elif arg[0] == '-' and arg[1:].isdigit():
                     max = arg[1:]
 
                 elif arg == '--':
@@ -568,7 +575,7 @@ class DynamoDBShell(Cmd):
             asc = True
 
         arg = args[0]
-        if arg[0] == '-' and arg[1].isdigit():
+        if arg[0] == '-' and arg[1:].isdigit():
             max = int(arg[1:])
             args.pop(0)
 
