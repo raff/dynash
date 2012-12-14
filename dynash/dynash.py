@@ -31,7 +31,7 @@ from version import __version__
 from cmd2 import Cmd
 
 import boto
-from boto.dynamodb.exceptions import DynamoDBResponseError, BotoClientError
+from boto.dynamodb.exceptions import DynamoDBResponseError, DynamoDBConditionalCheckFailedError, BotoClientError
 from boto.dynamodb.condition import *
 from boto.dynamodb.types import Binary
 
@@ -196,12 +196,14 @@ class DynamoDBShell(Cmd):
             return {1}
         return None
 
+    def get_first_rest(self, line):
+        param, _, rest = line.partition(" ")
+        return param, rest.strip()
+
     def get_table_params(self, line):
         if line and line[0] == ':':
-            parts = line.split(" ", 1)
-            table_name = parts[0][1:]
-            line = parts[1].strip() if len(parts) > 1 else ""
-            return self.conn.get_table(table_name), line
+            table_name, line = self.get_first_rest(line)
+            return self.conn.get_table(table_name[1:]), line
         else:
             return self.table, line
 
@@ -370,8 +372,15 @@ class DynamoDBShell(Cmd):
                 print ""
 
     def do_put(self, line):
-        "put [:tablename] {json-body} [{json-body}, {json-body}...]"
+        "put [:tablename] [!fieldname:expectedvalue] {json-body} [{json-body}, {json-body}...]"
         table, line = self.get_table_params(line)
+        expected = {}
+
+        while line.startswith("!"):
+            # !field:expected-value
+            param, line = self.get_first_rest(line[1:])
+            name, value = param.split(":", 1)
+            expected[name] = value or False
 
         if line.startswith('(') or line.startswith('['):
             list = self.get_list(line)
@@ -386,7 +395,7 @@ class DynamoDBShell(Cmd):
                 print ""
         else:
             item = json.loads(line)
-            table.new_item(None, None, item).put()
+            table.new_item(None, None, item).put(expected_value=expected or None)
             consumed = None
 
         if self.consumed and consumed:
@@ -413,9 +422,16 @@ class DynamoDBShell(Cmd):
         print "imported %s items, consumed units:%s" % (items, consumed)
 
     def do_update(self, line):
-        "update [:tablename] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
+        "update [:tablename] [!fieldname:expectedvalue] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
         table, line = self.get_table_params(line)
         hkey, attr = line.split(" ", 1)
+        expected = {}
+
+        while line.startswith("!"):
+            # !field:expected-value
+            param, line = self.get_first_rest(line[1:])
+            name, value = param.split(":", 1)
+            expected[name] = value or False
 
         if attr[0] == '-':
             op, attr = attr.split(" ", 1)
@@ -445,7 +461,7 @@ class DynamoDBShell(Cmd):
                 item.put_attribute(name, value)
 
         self.pprint(item)
-        updated = item.save(return_values=ret)
+        updated = item.save(expected_value=expected or None, return_values=ret)
         self.pprint(updated)
 
         if self.consumed:
@@ -636,6 +652,8 @@ class DynamoDBShell(Cmd):
             return False
         except NotImplementedError as e:
             print e.message
+        except DynamoDBConditionalCheckFailedError as e:
+            print e.error_message
         except (DynamoDBResponseError, BotoClientError) as dberror:
             print self.pp.pformat(dberror)
         except:
