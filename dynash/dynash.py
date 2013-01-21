@@ -422,7 +422,7 @@ class DynamoDBShell(Cmd):
         print "imported %s items, consumed units:%s" % (items, consumed)
 
     def do_update(self, line):
-        "update [:tablename] [!fieldname:expectedvalue] {hashkey} [-add|-delete] {attributes}"  # [ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW]"
+        "update [:tablename] {hashkey[,rangekey]} [!fieldname:expectedvalue] [-add|-delete] [+ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW] {attributes}" 
         table, line = self.get_table_params(line)
         hkey, attr = line.split(" ", 1)
         expected = {}
@@ -445,7 +445,12 @@ class DynamoDBShell(Cmd):
         else:
             ret = "ALL_NEW"
 
-        item = table.new_item(hash_key=self.get_typed_value(table, hkey))
+        if ',' in hkey:
+            hkey, rkey = hkey.split(",", 1)
+        else:
+            rkey = None
+
+        item = table.new_item(hash_key=self.get_typed_value(table, hkey), range_key=self.get_typed_value(table, rkey, False))
 
         attr = json.loads(attr.strip())
         for name in attr.keys():
