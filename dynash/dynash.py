@@ -236,6 +236,17 @@ class DynamoDBShell(Cmd):
         except:
             return ast.literal_eval(line)
 
+    def get_expected(self, line):
+        expected = {}
+
+        while line.startswith("!"):
+            # !field:expected-value
+            param, line = self.get_first_rest(line[1:])
+            name, value = param.split(":", 1)
+            expected[name] = value or False
+
+        return expected or None, line
+
     def do_login(self, line):
         "login aws-acces-key aws-secret"
         if line:
@@ -374,13 +385,7 @@ class DynamoDBShell(Cmd):
     def do_put(self, line):
         "put [:tablename] [!fieldname:expectedvalue] {json-body} [{json-body}, {json-body}...]"
         table, line = self.get_table_params(line)
-        expected = {}
-
-        while line.startswith("!"):
-            # !field:expected-value
-            param, line = self.get_first_rest(line[1:])
-            name, value = param.split(":", 1)
-            expected[name] = value or False
+        expected, line = self.get_expected(line)
 
         if line.startswith('(') or line.startswith('['):
             list = self.get_list(line)
@@ -395,7 +400,7 @@ class DynamoDBShell(Cmd):
                 print ""
         else:
             item = json.loads(line)
-            table.new_item(None, None, item).put(expected_value=expected or None)
+            table.new_item(None, None, item).put(expected_value=expected)
             consumed = None
 
         if self.consumed and consumed:
@@ -424,14 +429,8 @@ class DynamoDBShell(Cmd):
     def do_update(self, line):
         "update [:tablename] {hashkey[,rangekey]} [!fieldname:expectedvalue] [-add|-delete] [+ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW] {attributes}" 
         table, line = self.get_table_params(line)
-        hkey, attr = line.split(" ", 1)
-        expected = {}
-
-        while line.startswith("!"):
-            # !field:expected-value
-            param, line = self.get_first_rest(line[1:])
-            name, value = param.split(":", 1)
-            expected[name] = value or False
+        hkey, line = line.split(" ", 1)
+        expected, attr = self.get_expected(line)
 
         if attr[0] == '-':
             op, attr = attr.split(" ", 1)
@@ -523,15 +522,28 @@ class DynamoDBShell(Cmd):
                 print "consumed units:", item.consumed_units
 
     def do_rm(self, line):
-        "rm [:tablename] {haskkey} [rangekey]"
+        "rm [:tablename] [!fieldname:expectedvalue] [-v] {haskkey,[rangekey]}"
         table, line = self.get_table_params(line)
-        args = self.getargs(line)
-        hkey = self.get_typed_value(table, args[0], True)
-        rkey = self.get_typed_value(table, args[1], False) if len(args) > 1 else None
-        item = table.get_item(hkey, rkey, [],
-                              consistent_read=self.consistent)
-        if item:
-            item.delete()
+        expected, line = self.get_expected(line)
+        
+        if line.startswith("-v "):
+            line = line[3:].strip()
+            ret = "ALL_OLD"
+        else:
+            ret = None
+
+        hkey = line
+        if ',' in hkey:
+            hkey, rkey = hkey.split(",", 1)
+        else:
+            rkey = None
+
+        item = table.new_item(hash_key=self.get_typed_value(table, hkey), range_key=self.get_typed_value(table, rkey, False))
+        item = item.delete(expected_value=expected, return_values=ret)
+        self.pprint(item)
+
+        if self.consumed:
+            print "consumed units:", item.consumed_units
 
     def do_scan(self, line):
         "scan [:tablename] [-{max}] [+filter_attribute:filter_value] [attributes,...]"
