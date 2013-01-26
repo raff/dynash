@@ -600,6 +600,7 @@ class DynamoDBShell(Cmd):
         args = self.getargs(line)
 
         max = None
+        condition = None
 
         if '-r' in args:
             asc = False
@@ -607,15 +608,43 @@ class DynamoDBShell(Cmd):
         else:
             asc = True
 
-        arg = args[0]
-        if arg[0] == '-' and arg[1:].isdigit():
-            max = int(arg[1:])
-            args.pop(0)
+        while args:
+            arg = args[0]
+
+            if arg[0] == '-' and arg[1:].isdigit():
+                max = int(arg[1:])
+                args.pop(0)
+            
+            elif arg.startswith("--begin=") or arg.startswith("--start="):
+                condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], True))
+                args.pop(0)
+            elif arg.startswith("--eq="):
+                condition = EQ(self.get_typed_value(table, arg[5:], True))
+                args.pop(0)
+            elif arg.startswith("--le="):
+                condition = LE(self.get_typed_value(table, arg[5:], True))
+                args.pop(0)
+            elif arg.startswith("--lt="):
+                condition = LT(self.get_typed_value(table, arg[5:], True))
+                args.pop(0)
+            elif arg.startswith("--ge="):
+                condition = LE(self.get_typed_value(table, arg[5:], True))
+                args.pop(0)
+            elif arg.startswith("--gt="):
+                condition = LT(self.get_typed_value(table, arg[5:], True))
+                args.pop(0)
+            elif arg.startswith("--between="):
+                parts = arg[10:].split(",", 1)
+                condition = BETWEEN(self.get_typed_value(table, parts[0], True), self.get_typed_value(table, parts[1], True))
+                args.pop(0)
+
+            else:
+                break
 
         hkey = self.get_typed_value(table, args[0])
         attrs = args[1].split(",") if len(args) > 1 else None
 
-        result = table.query(hkey, attributes_to_get=attrs, scan_index_forward=asc, max_results=max)
+        result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, max_results=max)
 
         self.print_iterator(result)
 
