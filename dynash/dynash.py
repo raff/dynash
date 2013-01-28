@@ -546,7 +546,22 @@ class DynamoDBShell(Cmd):
             print "consumed units:", item.consumed_units
 
     def do_scan(self, line):
-        "scan [:tablename] [-{max}] [+filter_attribute:filter_value] [attributes,...]"
+        """
+        scan [:tablename] [-{max}] [+filter_attribute:filter_value] [attributes,...]
+
+        if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
+
+            begin (attribute begins with value)
+            eq (equal value)
+            le (less or equal then value)
+            lt (less then value)
+            ge (greater or equal then value)
+            gt (greater then value)
+            between (between value1 and value2 - use: between=value1,value2)
+
+        otherwise the value must fully match (equal attribute)
+        """
+
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
@@ -557,8 +572,27 @@ class DynamoDBShell(Cmd):
         while args:
             if args[0].startswith('+'):
                 arg = args.pop(0)
-                filter = arg[1:].split(':', 1)
-                scan_filter[filter[0]] = EQ(filter[1])
+                filter_name, filter_value = arg[1:].split(':', 1)
+
+                if filter_value.startswith("begin=") or filter_value.startswith("start="):
+                    filter_cond = BEGINS_WITH(filter_value[6:])
+                elif filter_value.startswith("eq="):
+                    filter_cond = EQ(filter_value[3:])
+                elif filter_value.startswith("le="):
+                    filter_cond = LE(filter_value[3:])
+                elif filter_value.startswith("lt="):
+                    filter_cond = LT(filter_value[3:])
+                elif filter_value.startswith("ge="):
+                    filter_cond = GE(filter_value[3:])
+                elif filter_value.startswith("gt="):
+                    filter_cond = GT(filter_value[3:])
+                elif filter_value.startswith("between="):
+                    parts = filter_value[8:].split(",", 1)
+                    filter_cond = BETWEEN(parts[0], parts[1])
+                else:
+                    filter_cond = EQ(filter_value)
+
+                scan_filter[filter_name] = filter_cond
 
             elif args[0].startswith('-'):
                 arg = args.pop(0)
@@ -595,7 +629,19 @@ class DynamoDBShell(Cmd):
             print "consumed units:", result.consumed_units
 
     def do_query(self, line):
-        "query [:tablename] [-r] [-{max}] hkey [attributes,...]"
+        """
+        query [:tablename] [-r] [-{max}] [{rkey-condition}] hkey [attributes,...]
+        
+        where rkey-condition:
+            --begin={startkey} (rkey begins with startkey)
+            --eq={key} (equal key)
+            --le={key} (less or equal than key)
+            --lt={key} (less than key)
+            --ge={key} (greater or equal than key)
+            --gt={key} (greater thn key)
+            --between={firstkey},{lastkey} (between firstkey and lastkey)
+        """
+
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
@@ -628,10 +674,10 @@ class DynamoDBShell(Cmd):
                 condition = LT(self.get_typed_value(table, arg[5:], True))
                 args.pop(0)
             elif arg.startswith("--ge="):
-                condition = LE(self.get_typed_value(table, arg[5:], True))
+                condition = GE(self.get_typed_value(table, arg[5:], True))
                 args.pop(0)
             elif arg.startswith("--gt="):
-                condition = LT(self.get_typed_value(table, arg[5:], True))
+                condition = GT(self.get_typed_value(table, arg[5:], True))
                 args.pop(0)
             elif arg.startswith("--between="):
                 parts = arg[10:].split(",", 1)
