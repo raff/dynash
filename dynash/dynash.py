@@ -601,7 +601,7 @@ class DynamoDBShell(Cmd):
                     count = True
 
                 elif arg[0] == '-' and arg[1:].isdigit():
-                    max = arg[1:]
+                    max = int(arg[1:])
 
                 elif arg == '--':
                     break
