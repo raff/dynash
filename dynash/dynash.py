@@ -547,7 +547,7 @@ class DynamoDBShell(Cmd):
 
     def do_scan(self, line):
         """
-        scan [:tablename] [-{max}] [+filter_attribute:filter_value] [attributes,...]
+        scan [:tablename] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
 
         if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
 
@@ -618,7 +618,7 @@ class DynamoDBShell(Cmd):
 
         attrs = args[0].split(",") if args else None
 
-        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, max_results=max, count=count)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=max, max_results=max, count=count)
 
         if count:
             print "count: %s/%s" % (result.scanned_count, result.count)
@@ -690,7 +690,7 @@ class DynamoDBShell(Cmd):
         hkey = self.get_typed_value(table, args[0])
         attrs = args[1].split(",") if len(args) > 1 else None
 
-        result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, max_results=max)
+        result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=max, max_results=max)
 
         self.print_iterator(result)
 
