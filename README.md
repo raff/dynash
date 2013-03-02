@@ -33,7 +33,12 @@ and many more (use 'help' to find the available commands)
 
 ### Note:
 
-- Credentials should be in your .boto config file (see http://docs.pythonboto.org/en/latest/boto_config_tut.html)
+- Credentials should be in your .boto config file under the [Credentials] (see http://docs.pythonboto.org/en/latest/boto_config_tut.html)
+
+- You can specify the DynamoDB region to use and other DynamoDB related configuration entries in your .boto config under the [DynamoDB] section:
+
+    [DynamoDB]
+    region=us-west-1
 
 - Item related commands use the currently selected table (see 'use' command) but you can pass a table name as first parameter prefixed by ':'
  
