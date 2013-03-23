@@ -190,10 +190,10 @@ class DynamoDBShell(Cmd):
         # those are not valid key types, but anyway
 
         if stype == 'SS':
-            return {"S"}
+            return set(["S"])
 
         if stype == 'NS':
-            return {1}
+            return set([1])
         return None
 
     def get_first_rest(self, line):
