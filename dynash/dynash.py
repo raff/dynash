@@ -166,11 +166,11 @@ class DynamoDBShell(Cmd):
 
         for next in gen:
             if prev:
-                print "  %s," % prev
+                print "  %s," % json.dumps(prev)
             prev = next
 
         if prev:
-            print "  %s" % prev
+            print "  %s" % json.dumps(prev)
 
         print "]"
 
@@ -547,7 +547,7 @@ class DynamoDBShell(Cmd):
 
     def do_scan(self, line):
         """
-        scan [:tablename] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
+        scan [:tablename] [--batch=#] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
 
         if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
 
