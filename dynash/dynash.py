@@ -568,6 +568,7 @@ class DynamoDBShell(Cmd):
         scan_filter = {}
         count = False
         max = None
+        batch_size = None
 
         while args:
             if args[0].startswith('+'):
@@ -594,6 +595,10 @@ class DynamoDBShell(Cmd):
 
                 scan_filter[filter_name] = filter_cond
 
+            elif args[0].startswith('--batch='):
+                batch_size = int(args[0][8:])
+                args.pop(0)
+
             elif args[0].startswith('-'):
                 arg = args.pop(0)
 
@@ -616,9 +621,12 @@ class DynamoDBShell(Cmd):
         #if scan_filter:
         #    print scan_filter
 
+        if batch_size is None:
+            batch_size = max
+
         attrs = args[0].split(",") if args else None
 
-        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=max, max_results=max, count=count)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=batch_size, max_results=max, count=count)
 
         if count:
             print "count: %s/%s" % (result.scanned_count, result.count)
@@ -710,7 +718,7 @@ class DynamoDBShell(Cmd):
                 table = self.conn.get_table(args.pop(0))
                 print "from table " + table.name
 
-                for item in table.scan(attributes_to_get=[]):
+                for item in table.scan(attributes_to_get=[], request_limit=10):
                     print "  removing %s" % item
                     item.delete()
         else:
