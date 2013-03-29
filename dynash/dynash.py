@@ -109,6 +109,21 @@ layer2.TableGenerator = TableGenerator
 HISTORY_FILE = ".dynash_history"
 
 
+class DynamoEncoder(json.JSONEncoder):
+    """
+    This is mainly used to transform sets to lists
+    """
+    def default(self, o):
+        try:
+           iterable = iter(o)
+        except TypeError:
+            pass
+        else:
+            return list(iterable)
+
+        return JSONEncoder.default(self, o)
+
+
 class DynamoDBShell(Cmd):
 
     prompt = "dynash> "
@@ -161,16 +176,18 @@ class DynamoDBShell(Cmd):
             print str(object)
 
     def print_iterator(self, gen):
+        encoder = DynamoEncoder()
+
         prev = None
         print "["
 
         for next in gen:
             if prev:
-                print "  %s," % json.dumps(prev)
+                print "  %s," % encoder.encode(prev)
             prev = next
 
         if prev:
-            print "  %s" % json.dumps(prev)
+            print "  %s" % encoder.encode(prev)
 
         print "]"
 
@@ -596,8 +613,8 @@ class DynamoDBShell(Cmd):
                 scan_filter[filter_name] = filter_cond
 
             elif args[0].startswith('--batch='):
-                batch_size = int(args[0][8:])
-                args.pop(0)
+                arg = args.pop(0)
+                batch_size = int(arg)
 
             elif args[0].startswith('-'):
                 arg = args.pop(0)
@@ -618,13 +635,12 @@ class DynamoDBShell(Cmd):
             else:
                 break
 
-        #if scan_filter:
-        #    print scan_filter
-
         if batch_size is None:
             batch_size = max
 
-        attrs = args[0].split(",") if args else None
+        attrs = list(set(args[0].split(","))) if args else None
+
+        #print "scan filter:%s attributes:%s limit:%s max:%s count:%s" % (scan_filter, attrs, batch_size, max, count)
 
         result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=batch_size, max_results=max, count=count)
 
@@ -696,7 +712,7 @@ class DynamoDBShell(Cmd):
                 break
 
         hkey = self.get_typed_value(table, args[0])
-        attrs = args[1].split(",") if len(args) > 1 else None
+        attrs = list(set(args[1].split(","))) if len(args) > 1 else None
 
         result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=max, max_results=max)
 
