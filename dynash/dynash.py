@@ -614,7 +614,11 @@ class DynamoDBShell(Cmd):
 
             elif args[0].startswith('--batch='):
                 arg = args.pop(0)
-                batch_size = int(arg)
+                batch_size = int(arg[8:])
+
+            elif args[0].startswith('--max='):
+                arg = args.pop(0)
+                count = int(arg[6:])
 
             elif args[0].startswith('-'):
                 arg = args.pop(0)
