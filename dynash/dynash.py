@@ -62,50 +62,6 @@ else:
         readline.parse_and_bind("tab: complete")
 
 
-##########################################
-#
-# Monkey patch boto to support count results
-#
-
-from boto.dynamodb import layer2
-
-
-class TableGenerator(layer2.TableGenerator):
-
-    def __init__(self, table, callable, max_results, item_class, kwargs):
-        _original_TableGenerator.__init__(self, table, callable, max_results, item_class, kwargs)
-
-        if 'count' in kwargs and kwargs['count']:
-            self.count = 0
-            self.scanned_count = 0
-            self.consumed_units = 0
-
-            response = True
-            while response:
-                response = self.callable(**self.kwargs)
-
-                if 'ConsumedCapacityUnits' in response:
-                    self.consumed_units += response['ConsumedCapacityUnits']
-
-                if 'Count' in response:
-                    self.count += response['Count']
-
-                if 'ScannedCount' in response:
-                    self.scanned_count += response['ScannedCount']
-
-                if 'LastEvaluatedKey' in response:
-                    lek = response['LastEvaluatedKey']
-                    esk = self.table.layer2.dynamize_last_evaluated_key(lek)
-                    self.kwargs['exclusive_start_key'] = esk
-                else:
-                    break
-
-_original_TableGenerator = layer2.TableGenerator
-layer2.TableGenerator = TableGenerator
-
-#
-##########################################
-
 HISTORY_FILE = ".dynash_history"
 
 
@@ -168,6 +124,7 @@ class DynamoDBShell(Cmd):
         self.consistent = False
         self.consumed = False
         self.verbose = False
+        self.next_key = None
 
     def pprint(self, object):
         if self.pretty:
@@ -542,7 +499,7 @@ class DynamoDBShell(Cmd):
         "rm [:tablename] [!fieldname:expectedvalue] [-v] {haskkey,[rangekey]}"
         table, line = self.get_table_params(line)
         expected, line = self.get_expected(line)
-        
+
         if line.startswith("-v "):
             line = line[3:].strip()
             ret = "ALL_OLD"
@@ -584,15 +541,16 @@ class DynamoDBShell(Cmd):
 
         scan_filter = {}
         count = False
-        max = None
+        max_size = None
         batch_size = None
+        start = None
 
         while args:
             if args[0].startswith('+'):
                 arg = args.pop(0)
                 filter_name, filter_value = arg[1:].split(':', 1)
 
-                if filter_value.startswith("begin=") or filter_value.startswith("start="):
+                if filter_value.startswith("begin="):
                     filter_cond = BEGINS_WITH(filter_value[6:])
                 elif filter_value.startswith("eq="):
                     filter_cond = EQ(filter_value[3:])
@@ -618,7 +576,19 @@ class DynamoDBShell(Cmd):
 
             elif args[0].startswith('--max='):
                 arg = args.pop(0)
-                count = int(arg[6:])
+                max_size = int(arg[6:])
+
+            elif args[0].startswith('--start='):
+                arg = args.pop(0)
+                start = (arg[8:], )
+
+            elif args[0] == '--next':
+                arg = args.pop(0)
+                if self.next_key:
+                    start = self.next_key
+                else:
+                    print "no next"
+                    return
 
             elif args[0].startswith('-'):
                 arg = args.pop(0)
@@ -627,7 +597,7 @@ class DynamoDBShell(Cmd):
                     count = True
 
                 elif arg[0] == '-' and arg[1:].isdigit():
-                    max = int(arg[1:])
+                    max_size = int(arg[1:])
 
                 elif arg == '--':
                     break
@@ -639,19 +609,18 @@ class DynamoDBShell(Cmd):
             else:
                 break
 
-        if batch_size is None:
-            batch_size = max
-
         attrs = list(set(args[0].split(","))) if args else None
 
         #print "scan filter:%s attributes:%s limit:%s max:%s count:%s" % (scan_filter, attrs, batch_size, max, count)
 
-        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=batch_size, max_results=max, count=count)
+        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=batch_size, max_results=max_size, count=count, exclusive_start_key=start)
 
         if count:
             print "count: %s/%s" % (result.scanned_count, result.count)
+            self.next_key = None
         else:
             self.print_iterator(result)
+            self.next_key = result.last_evaluated_key
 
         if self.consumed:
             print "consumed units:", result.consumed_units
@@ -659,7 +628,7 @@ class DynamoDBShell(Cmd):
     def do_query(self, line):
         """
         query [:tablename] [-r] [-{max}] [{rkey-condition}] hkey [attributes,...]
-        
+
         where rkey-condition:
             --begin={startkey} (rkey begins with startkey)
             --eq={key} (equal key)
@@ -673,8 +642,11 @@ class DynamoDBShell(Cmd):
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
-        max = None
         condition = None
+        count = False
+        max_size = None
+        batch_size = None
+        start = None
 
         if '-r' in args:
             asc = False
@@ -686,10 +658,13 @@ class DynamoDBShell(Cmd):
             arg = args[0]
 
             if arg[0] == '-' and arg[1:].isdigit():
-                max = int(arg[1:])
+                max_size = int(arg[1:])
                 args.pop(0)
-            
-            elif arg.startswith("--begin=") or arg.startswith("--start="):
+
+            elif arg == '-c':
+                count = True
+
+            elif arg.startswith("--begin="):
                 condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], True))
                 args.pop(0)
             elif arg.startswith("--eq="):
@@ -712,15 +687,40 @@ class DynamoDBShell(Cmd):
                 condition = BETWEEN(self.get_typed_value(table, parts[0], True), self.get_typed_value(table, parts[1], True))
                 args.pop(0)
 
+            elif args[0].startswith('--batch='):
+                arg = args.pop(0)
+                batch_size = int(arg[8:])
+
+            elif args[0].startswith('--max='):
+                arg = args.pop(0)
+                max_size = int(arg[6:])
+
+            elif args[0].startswith('--start='):
+                arg = args.pop(0)
+                start = (arg[8:], )
+
+            elif args[0] == '--next':
+                arg = args.pop(0)
+                if self.next_key:
+                    start = self.next_key
+                else:
+                    print "no next"
+                    return
             else:
                 break
 
         hkey = self.get_typed_value(table, args[0])
         attrs = list(set(args[1].split(","))) if len(args) > 1 else None
 
-        result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=max, max_results=max)
+        result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=batch_size, max_results=max_size, count=count, exclusive_start_key=start)
 
-        self.print_iterator(result)
+        if count:
+            print "count: %s/%s" % (result.scanned_count, result.count)
+            self.next_key = None
+        else:
+            self.print_iterator(result)
+            self.next_key = result.last_evaluated_key
+
 
         if self.consumed:
             print "consumed units:", result.consumed_units
