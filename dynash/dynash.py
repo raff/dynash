@@ -593,7 +593,7 @@ class DynamoDBShell(Cmd):
             elif args[0].startswith('-'):
                 arg = args.pop(0)
 
-                if arg == '-c':
+                if arg == '-c' or arg == '--count':
                     count = True
 
                 elif arg[0] == '-' and arg[1:].isdigit():
@@ -661,8 +661,9 @@ class DynamoDBShell(Cmd):
                 max_size = int(arg[1:])
                 args.pop(0)
 
-            elif arg == '-c':
+            elif arg == '-c' or arg == '--count':
                 count = True
+                args.pop(0)
 
             elif arg.startswith("--begin="):
                 condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], True))
