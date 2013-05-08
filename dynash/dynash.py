@@ -568,12 +568,17 @@ class DynamoDBShell(Cmd):
 
         if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
 
-            begin (attribute begins with value)
             eq (equal value)
+            ne {value} (not equal value)
             le (less or equal then value)
             lt (less then value)
             ge (greater or equal then value)
             gt (greater then value)
+            exist (value exists)
+            nexist (value does not exists)
+            contains (contains value)
+            ncontains (does not contains value)
+            begin (attribute begins with value)
             between (between value1 and value2 - use: between=value1,value2)
 
         otherwise the value must fully match (equal attribute)
@@ -596,6 +601,8 @@ class DynamoDBShell(Cmd):
                     filter_cond = BEGINS_WITH(filter_value[6:])
                 elif filter_value.startswith("eq="):
                     filter_cond = EQ(filter_value[3:])
+                elif filter_value.startswith("ne="):
+                    filter_cond = NE(filter_value[3:])
                 elif filter_value.startswith("le="):
                     filter_cond = LE(filter_value[3:])
                 elif filter_value.startswith("lt="):
@@ -604,6 +611,12 @@ class DynamoDBShell(Cmd):
                     filter_cond = GE(filter_value[3:])
                 elif filter_value.startswith("gt="):
                     filter_cond = GT(filter_value[3:])
+                elif filter_value == ":exists":
+                    filter_cond = NOT_NULL()
+                elif filter_value == ":nexists":
+                    filter_cond = NULL()
+                elif filter_value.startswith("contains="):
+                    filter_cond = CONTAINS(filter_value[9:])
                 elif filter_value.startswith("between="):
                     parts = filter_value[8:].split(",", 1)
                     filter_cond = BETWEEN(parts[0], parts[1])
@@ -661,12 +674,17 @@ class DynamoDBShell(Cmd):
         query [:tablename] [-r] [-{max}] [{rkey-condition}] hkey [attributes,...]
         
         where rkey-condition:
-            --begin={startkey} (rkey begins with startkey)
             --eq={key} (equal key)
+            --ne={key} (not equal key)
             --le={key} (less or equal than key)
             --lt={key} (less than key)
             --ge={key} (greater or equal than key)
-            --gt={key} (greater thn key)
+            --gt={key} (greater than key)
+            --exists   (key exists)
+            --nexists  (key does not exists)
+            --contains={key} (contains key)
+            --ncontains={key} (does not contains key)
+            --begin={startkey} (rkey begins with startkey)
             --between={firstkey},{lastkey} (between firstkey and lastkey)
         """
 
@@ -690,26 +708,38 @@ class DynamoDBShell(Cmd):
                 args.pop(0)
             
             elif arg.startswith("--begin=") or arg.startswith("--start="):
-                condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], True))
+                condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], False))
                 args.pop(0)
             elif arg.startswith("--eq="):
-                condition = EQ(self.get_typed_value(table, arg[5:], True))
+                condition = EQ(self.get_typed_value(table, arg[5:], False))
+                args.pop(0)
+            elif arg.startswith("--ne="):
+                condition = NE(self.get_typed_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--le="):
-                condition = LE(self.get_typed_value(table, arg[5:], True))
+                condition = LE(self.get_typed_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--lt="):
-                condition = LT(self.get_typed_value(table, arg[5:], True))
+                condition = LT(self.get_typed_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--ge="):
-                condition = GE(self.get_typed_value(table, arg[5:], True))
+                condition = GE(self.get_typed_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--gt="):
-                condition = GT(self.get_typed_value(table, arg[5:], True))
+                condition = GT(self.get_typed_value(table, arg[5:], False))
+                args.pop(0)
+            elif arg == "--exists":
+                condition = NOT_NULL()
+                args.pop(0)
+            elif arg == "--nexists":
+                condition = NULL()
+                args.pop(0)
+            elif arg.startswith("--contains="):
+                condition = CONTAINS(self.get_typed_value(table, arg[11:], False))
                 args.pop(0)
             elif arg.startswith("--between="):
                 parts = arg[10:].split(",", 1)
-                condition = BETWEEN(self.get_typed_value(table, parts[0], True), self.get_typed_value(table, parts[1], True))
+                condition = BETWEEN(self.get_typed_value(table, parts[0], True), self.get_typed_value(table, parts[1], False))
                 args.pop(0)
 
             else:
