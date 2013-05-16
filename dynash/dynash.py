@@ -135,16 +135,16 @@ class DynamoDBShell(Cmd):
     def print_iterator(self, gen):
         encoder = DynamoEncoder()
 
-        prev = None
+        prev_item = None
         print "["
 
-        for next in gen:
-            if prev:
-                print "  %s," % encoder.encode(prev)
-            prev = next
+        for next_item in gen:
+            if prev_item:
+                print "  %s," % encoder.encode(prev_item)
+            prev_item = next_item
 
-        if prev:
-            print "  %s" % encoder.encode(prev)
+        if prev_item:
+            print "  %s" % encoder.encode(prev_item)
 
         print "]"
 
@@ -175,9 +175,9 @@ class DynamoDBShell(Cmd):
         return param, rest.strip()
 
     def get_table_params(self, line):
-        if line and line[0] == ':':
+        if line and (line[0] == ':' or not self.table):
             table_name, line = self.get_first_rest(line)
-            return self.conn.get_table(table_name[1:]), line
+            return self.conn.get_table(table_name.lstrip(':')), line
         else:
             return self.table, line
 
