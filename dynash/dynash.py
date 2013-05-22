@@ -126,11 +126,8 @@ class DynamoDBShell(Cmd):
         self.verbose = False
         self.next_key = None
 
-    def pprint(self, object):
-        if self.pretty:
-            print self.pp.pformat(object)
-        else:
-            print str(object)
+    def pprint(self, object, prefix=''):
+        print "%s%s" % (prefix, self.pp.pformat(object) if self.pretty else str(object))
 
     def print_iterator(self, gen):
         encoder = DynamoEncoder()
@@ -241,36 +238,43 @@ class DynamoDBShell(Cmd):
         self.pprint(self.tables)
 
     def do_describe(self, line):
-        "describe {tablename}"
-        if line and line.startswith('-c'):
+        "describe [-c] {tablename}..."
+        args = self.getargs(line)
+
+        if '-c' in args:
             create_info = True
-            parts = line.split(" ", 1)
-            line = parts[1].strip() if len(parts) > 1 else None
+            args.remove('-c')
         else:
             create_info = False
 
-        table = line or self.table.name
-        desc = self.conn.describe_table(table)
-
-        if create_info:
-            info = desc['Table']
-            schema = info['KeySchema']
-            name = info['TableName']
-
-            hkey = schema['HashKeyElement']
-            hkey = "%s:%s" % (hkey['AttributeName'], hkey['AttributeType'])
-
-            if 'RangeKeyElement' in schema:
-                rkey = schema['RangeKeyElement']
-                rkey = " %s:%s" % (rkey['AttributeName'], rkey['AttributeType'])
+        if not args:
+            if self.table:
+                args = [ self.table.name ]
             else:
-                rkey = ''
+                args = self.tables
 
-            prov = info['ProvisionedThroughput']
-            prov = "-c %d,%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
-            print "create %s %s %s%s" % (name, prov, hkey, rkey)
-        else:
-            self.pprint(desc)
+        for table in args:
+            desc = self.conn.describe_table(table)
+
+            if create_info:
+                info = desc['Table']
+                schema = info['KeySchema']
+                name = info['TableName']
+
+                hkey = schema['HashKeyElement']
+                hkey = "%s:%s" % (hkey['AttributeName'], hkey['AttributeType'])
+
+                if 'RangeKeyElement' in schema:
+                    rkey = schema['RangeKeyElement']
+                    rkey = " %s:%s" % (rkey['AttributeName'], rkey['AttributeType'])
+                else:
+                    rkey = ''
+
+                prov = info['ProvisionedThroughput']
+                prov = "-c %d,%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
+                print "create %s %s %s%s" % (name, prov, hkey, rkey)
+            else:
+                self.pprint(desc, "%s: " % table)
 
     def do_use(self, line):
         "use {tablename}"
