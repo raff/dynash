@@ -56,13 +56,15 @@ except ImportError:
         readline = None
 else:
     import rlcompleter
-    if(sys.platform == 'darwin'):
-        readline.parse_and_bind("bind ^I rl_complete")
-    else:
-        readline.parse_and_bind("tab: complete")
+    #if(sys.platform == 'darwin'):
+    #    readline.parse_and_bind("bind ^I rl_complete")
+    #else:
+    #    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind("tab: complete")
 
 
 HISTORY_FILE = ".dynash_history"
+VALID_TYPES = set(['S', 'N', 'B', 'SS', 'NS'])
 
 
 class DynamoEncoder(json.JSONEncoder):
@@ -125,6 +127,7 @@ class DynamoDBShell(Cmd):
         self.consumed = False
         self.verbose = False
         self.next_key = None
+        self.schema = {}
 
     def pprint(self, object, prefix=''):
         print "%s%s" % (prefix, self.pp.pformat(object) if self.pretty else str(object))
@@ -146,7 +149,7 @@ class DynamoDBShell(Cmd):
         print "]"
 
     def getargs(self, line):
-        return shlex.split(str(line.decode('string-escape')))
+        return shlex.split(str(line.decode('unicode-escape')))
 
     def get_type(self, stype):
         if stype == 'S':
@@ -184,7 +187,7 @@ class DynamoDBShell(Cmd):
         else:
             return self.table
 
-    def get_typed_value(self, table, value, is_hash=True):
+    def get_typed_key_value(self, table, value, is_hash=True):
         schema = table.schema
 
         keytype = schema.hash_key_type if is_hash else schema.range_key_type
@@ -196,6 +199,23 @@ class DynamoDBShell(Cmd):
                 return str(value)
             if keytype == 'N':
                 return float(value) if '.' in value else int(value)
+        except:
+            pass
+
+        return value
+
+    def get_typed_value(self, field, value):
+        ftype = self.schema.get(field)
+        if not ftype:
+            return value
+
+        try:
+            if ftype == 'S':
+                return str(value)
+            if ftype == 'N':
+                return float(value) if '.' in value else int(value)
+
+            print "type %s is not supported yet" % ftype
         except:
             pass
 
@@ -217,6 +237,30 @@ class DynamoDBShell(Cmd):
             expected[name] = value or False
 
         return expected or None, line
+
+    def do_schema(self, line):
+        """
+        schema
+
+        schema --clear
+
+        schema filed_name field_type
+        """
+        args = self.getargs(line)
+
+        if not args:
+            for k in sorted(self.schema):
+                print "%s\t%s" % (k, self.schema[k])
+        elif args[0] == "--clear":
+            self.schema.clear()
+        else:
+            fname = args[0]
+            ftype = args[1]
+
+            if not ftype in VALID_TYPES:
+                print "invalid type: use %s" % list(VALID_TYPES)
+            else:
+                self.schema[fname] = ftype
 
     def do_login(self, line):
         "login aws-acces-key aws-secret"
@@ -427,7 +471,7 @@ class DynamoDBShell(Cmd):
         else:
             rkey = None
 
-        item = table.new_item(hash_key=self.get_typed_value(table, hkey), range_key=self.get_typed_value(table, rkey, False))
+        item = table.new_item(hash_key=self.get_typed_key_value(table, hkey), range_key=self.get_typed_key_value(table, rkey, False))
 
         attr = json.loads(attr.strip())
         for name in attr.keys():
@@ -468,11 +512,11 @@ class DynamoDBShell(Cmd):
             ordered = OrderedDict()
             for id in list:
                 if not isinstance(id, tuple):
-                    hkey = self.get_typed_value(table, unicode(id))
+                    hkey = self.get_typed_key_value(table, unicode(id))
                     rkey = None
                 else:
-                    hkey = self.get_typed_value(table, unicode(id[0]), True)
-                    rkey = self.get_typed_value(table, unicode(id[1]), False)
+                    hkey = self.get_typed_key_value(table, unicode(id[0]), True)
+                    rkey = self.get_typed_key_value(table, unicode(id[1]), False)
 
                 ordered[(hkey, rkey)] = None
 
@@ -489,8 +533,8 @@ class DynamoDBShell(Cmd):
             self.pprint(filter(None, ordered.values()))
         else:
             args = self.getargs(line)
-            hkey = self.get_typed_value(table, args[0], True)
-            rkey = self.get_typed_value(table, args[1], False) if len(args) > 1 else None
+            hkey = self.get_typed_key_value(table, args[0], True)
+            rkey = self.get_typed_key_value(table, args[1], False) if len(args) > 1 else None
 
             item = table.get_item(hkey, rkey,
                                   consistent_read=self.consistent)
@@ -504,19 +548,18 @@ class DynamoDBShell(Cmd):
         table, line = self.get_table_params(line)
         expected, line = self.get_expected(line)
 
-        if line.startswith("-v "):
-            line = line[3:].strip()
+        args = self.getargs(line)
+
+        if "-v" in args:
             ret = "ALL_OLD"
+            args.remove("-v")
         else:
             ret = None
 
-        hkey = line
-        if ',' in hkey:
-            hkey, rkey = hkey.split(",", 1)
-        else:
-            rkey = None
+        hkey = self.get_typed_key_value(table, args[0], True)
+        rkey = self.get_typed_key_value(table, args[1], False) if len(args) > 1 else None
 
-        item = table.new_item(hash_key=self.get_typed_value(table, hkey), range_key=self.get_typed_value(table, rkey, False))
+        item = table.new_item(hash_key=hkey, range_key=rkey)
         item = item.delete(expected_value=expected, return_values=ret)
         self.pprint(item)
 
@@ -560,30 +603,30 @@ class DynamoDBShell(Cmd):
                 filter_name, filter_value = arg[1:].split(':', 1)
 
                 if filter_value.startswith("begin="):
-                    filter_cond = BEGINS_WITH(filter_value[6:])
+                    filter_cond = BEGINS_WITH(self.get_typed_value(filter_name, filter_value[6:]))
                 elif filter_value.startswith("eq="):
-                    filter_cond = EQ(filter_value[3:])
+                    filter_cond = EQ(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("ne="):
-                    filter_cond = NE(filter_value[3:])
+                    filter_cond = NE(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("le="):
-                    filter_cond = LE(filter_value[3:])
+                    filter_cond = LE(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("lt="):
-                    filter_cond = LT(filter_value[3:])
+                    filter_cond = LT(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("ge="):
-                    filter_cond = GE(filter_value[3:])
+                    filter_cond = GE(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("gt="):
-                    filter_cond = GT(filter_value[3:])
+                    filter_cond = GT(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value == ":exists":
                     filter_cond = NOT_NULL()
                 elif filter_value == ":nexists":
                     filter_cond = NULL()
                 elif filter_value.startswith("contains="):
-                    filter_cond = CONTAINS(filter_value[9:])
+                    filter_cond = CONTAINS(self.get_typed_value(filter_name, filter_value[9:]))
                 elif filter_value.startswith("between="):
                     parts = filter_value[8:].split(",", 1)
-                    filter_cond = BETWEEN(parts[0], parts[1])
+                    filter_cond = BETWEEN(self.get_typed_value(parts[0]), self.get_typed_value(filter_name, parts[1]))
                 else:
-                    filter_cond = EQ(filter_value)
+                    filter_cond = EQ(self.get_typed_value(filter_name, filter_value))
 
                 scan_filter[filter_name] = filter_cond
 
@@ -686,27 +729,27 @@ class DynamoDBShell(Cmd):
             elif arg == '-c' or arg == '--count':
                 count = True
                 args.pop(0)
-            
+
             elif arg.startswith("--begin="):
-                condition = BEGINS_WITH(self.get_typed_value(table, arg[8:], False))
+                condition = BEGINS_WITH(self.get_typed_key_value(table, arg[8:], False))
                 args.pop(0)
             elif arg.startswith("--eq="):
-                condition = EQ(self.get_typed_value(table, arg[5:], False))
+                condition = EQ(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--ne="):
-                condition = NE(self.get_typed_value(table, arg[5:], False))
+                condition = NE(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--le="):
-                condition = LE(self.get_typed_value(table, arg[5:], False))
+                condition = LE(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--lt="):
-                condition = LT(self.get_typed_value(table, arg[5:], False))
+                condition = LT(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--ge="):
-                condition = GE(self.get_typed_value(table, arg[5:], False))
+                condition = GE(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg.startswith("--gt="):
-                condition = GT(self.get_typed_value(table, arg[5:], False))
+                condition = GT(self.get_typed_key_value(table, arg[5:], False))
                 args.pop(0)
             elif arg == "--exists":
                 condition = NOT_NULL()
@@ -715,11 +758,11 @@ class DynamoDBShell(Cmd):
                 condition = NULL()
                 args.pop(0)
             elif arg.startswith("--contains="):
-                condition = CONTAINS(self.get_typed_value(table, arg[11:], False))
+                condition = CONTAINS(self.get_typed_key_value(table, arg[11:], False))
                 args.pop(0)
             elif arg.startswith("--between="):
                 parts = arg[10:].split(",", 1)
-                condition = BETWEEN(self.get_typed_value(table, parts[0], True), self.get_typed_value(table, parts[1], False))
+                condition = BETWEEN(self.get_typed_key_value(table, parts[0], True), self.get_typed_key_value(table, parts[1], False))
                 args.pop(0)
 
             elif args[0].startswith('--batch='):
@@ -744,7 +787,7 @@ class DynamoDBShell(Cmd):
             else:
                 break
 
-        hkey = self.get_typed_value(table, args[0])
+        hkey = self.get_typed_key_value(table, args[0])
         attrs = list(set(args[1].split(","))) if len(args) > 1 else None
 
         result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=batch_size, max_results=max_size, count=count, exclusive_start_key=start)
