@@ -386,7 +386,7 @@ class DynamoDBShell(Cmd):
         else:
             print "%s: current capacity is %d read units, %d write units" % (table.name, current_read, current_write)
             # we can only double the current value at each call
-            while current_read < read_units and current_write < write_units:
+            while current_read < read_units or current_write < write_units:
                 if (read_units - current_read) > current_read:
                     current_read *= 2
                 else:
@@ -449,7 +449,7 @@ class DynamoDBShell(Cmd):
         print "imported %s items, consumed units:%s" % (items, consumed)
 
     def do_update(self, line):
-        "update [:tablename] {hashkey[,rangekey]} [!fieldname:expectedvalue] [-add|-delete] [+ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW] {attributes}" 
+        "update [:tablename] {hashkey[,rangekey]} [!fieldname:expectedvalue] [-add|-delete] [+ALL_OLD|ALL_NEW|UPDATED_OLD|UPDATED_NEW] {attributes}"
         table, line = self.get_table_params(line)
         hkey, line = line.split(" ", 1)
         expected, attr = self.get_expected(line)
