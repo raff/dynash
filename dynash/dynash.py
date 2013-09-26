@@ -34,6 +34,8 @@ import boto
 from boto.dynamodb.exceptions import DynamoDBResponseError, DynamoDBConditionalCheckFailedError, BotoClientError
 from boto.dynamodb.condition import *
 from boto.dynamodb.types import Binary
+from boto.dynamodb.layer2 import Layer2
+from boto.regioninfo import RegionInfo
 
 import ast
 import json
@@ -61,7 +63,6 @@ else:
     #else:
     #    readline.parse_and_bind("tab: complete")
     readline.parse_and_bind("tab: complete")
-
 
 HISTORY_FILE = ".dynash_history"
 VALID_TYPES = set(['S', 'N', 'B', 'SS', 'NS'])
@@ -578,8 +579,8 @@ class DynamoDBShell(Cmd):
             lt (less then value)
             ge (greater or equal then value)
             gt (greater then value)
-            exist (value exists)
-            nexist (value does not exists)
+            exists (value exists)
+            nexists (value does not exists)
             contains (contains value)
             ncontains (does not contains value)
             begin (attribute begins with value)
@@ -616,9 +617,9 @@ class DynamoDBShell(Cmd):
                     filter_cond = GE(self.get_typed_value(filter_name, filter_value[3:]))
                 elif filter_value.startswith("gt="):
                     filter_cond = GT(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value == ":exists":
+                elif filter_value == "exists":
                     filter_cond = NOT_NULL()
-                elif filter_value == ":nexists":
+                elif filter_value == "nexists":
                     filter_cond = NULL()
                 elif filter_value.startswith("contains="):
                     filter_cond = CONTAINS(self.get_typed_value(filter_name, filter_value[9:]))
