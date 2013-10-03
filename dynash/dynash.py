@@ -39,6 +39,7 @@ from boto.regioninfo import RegionInfo
 
 import ast
 import json
+import csv
 import logging
 import os
 import os.path
@@ -148,6 +149,18 @@ class DynamoDBShell(Cmd):
             print "  %s" % encoder.encode(prev_item)
 
         print "]"
+
+
+    def print_iterator_array(self, gen, keys):
+        encoder = DynamoEncoder()
+        writer = csv.writer(sys.stdout)
+
+        def to_array(item):
+            return [item.get(k) for k in keys]
+
+        for item in gen:
+            writer.writerow(to_array(item))
+
 
     def getargs(self, line):
         return shlex.split(str(line.decode('unicode-escape')))
@@ -594,6 +607,7 @@ class DynamoDBShell(Cmd):
 
         scan_filter = {}
         count = False
+        as_array = False
         max_size = None
         batch_size = None
         start = None
@@ -651,6 +665,10 @@ class DynamoDBShell(Cmd):
                     print "no next"
                     return
 
+            elif args[0] == '-a' or args[0] == '--array':
+                as_array = True
+                args.pop(0)
+
             elif args[0].startswith('-'):
                 arg = args.pop(0)
 
@@ -670,7 +688,8 @@ class DynamoDBShell(Cmd):
             else:
                 break
 
-        attrs = list(set(args[0].split(","))) if args else None
+        attr_keys = args[0].split(",") if args else None
+        attrs = list(set(attr_keys)) if attr_keys else None
 
         #print "scan filter:%s attributes:%s limit:%s max:%s count:%s" % (scan_filter, attrs, batch_size, max, count)
 
@@ -680,7 +699,11 @@ class DynamoDBShell(Cmd):
             print "count: %s/%s" % (result.scanned_count, result.count)
             self.next_key = None
         else:
-            self.print_iterator(result)
+            if as_array and attr_keys:
+                self.print_iterator_array(result, attr_keys)
+            else:
+                self.print_iterator(result)
+
             self.next_key = result.last_evaluated_key
 
         if self.consumed:
@@ -710,6 +733,7 @@ class DynamoDBShell(Cmd):
 
         condition = None
         count = False
+        as_array = False
         max_size = None
         batch_size = None
         start = None
@@ -729,6 +753,10 @@ class DynamoDBShell(Cmd):
 
             elif arg == '-c' or arg == '--count':
                 count = True
+                args.pop(0)
+
+            elif arg == '-a' or arg == '--array':
+                as_array = True
                 args.pop(0)
 
             elif arg.startswith("--begin="):
@@ -789,7 +817,8 @@ class DynamoDBShell(Cmd):
                 break
 
         hkey = self.get_typed_key_value(table, args[0])
-        attrs = list(set(args[1].split(","))) if len(args) > 1 else None
+        attr_keys = args[0].split(",") if args else None
+        attrs = list(set(attr_keys)) if attr_keys else None
 
         result = table.query(hkey, range_key_condition=condition, attributes_to_get=attrs, scan_index_forward=asc, request_limit=batch_size, max_results=max_size, count=count, exclusive_start_key=start)
 
@@ -797,7 +826,11 @@ class DynamoDBShell(Cmd):
             print "count: %s/%s" % (result.scanned_count, result.count)
             self.next_key = None
         else:
-            self.print_iterator(result)
+            if as_array and attr_keys:
+                self.print_iterator_array(result, attr_keys)
+            else:
+                self.print_iterator(result)
+
             self.next_key = result.last_evaluated_key
 
 
