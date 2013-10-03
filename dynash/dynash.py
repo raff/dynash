@@ -580,6 +580,33 @@ class DynamoDBShell(Cmd):
         if self.consumed:
             print "consumed units:", item.consumed_units
 
+    def do_rmattr(self, line):
+        "rmattr [:tablename] [!fieldname:expectedvalue] [-v] {haskkey,[rangekey]} attr [attr...]"
+        table, line = self.get_table_params(line)
+        expected, line = self.get_expected(line)
+
+        args = self.getargs(line)
+
+        if "-v" in args:
+            ret = "ALL_OLD"
+            args.remove("-v")
+        else:
+            ret = None
+
+        hkey = self.get_typed_key_value(table, args[0], True)
+        rkey = self.get_typed_key_value(table, args[1], False) if len(args) > 1 else None
+
+        item = table.new_item(hash_key=hkey, range_key=rkey)
+
+        for arg in args:
+            item.delete_attribute(arg)
+
+        item = item.save(expected_value=expected, return_values=ret)
+        self.pprint(item)
+
+        if self.consumed:
+            print "consumed units:", item.consumed_units
+
     def do_scan(self, line):
         """
         scan [:tablename] [--batch=#] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
