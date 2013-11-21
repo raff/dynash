@@ -75,7 +75,7 @@ class DynamoEncoder(json.JSONEncoder):
     """
     def default(self, o):
         try:
-           iterable = iter(o)
+            iterable = iter(o)
         except TypeError:
             pass
         else:
@@ -153,13 +153,13 @@ class DynamoDBShell(Cmd):
 
     def print_iterator_array(self, gen, keys):
         encoder = DynamoEncoder()
-        writer = csv.writer(sys.stdout)
+        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_NONNUMERIC, doublequote=False, escapechar=str('\\'))
 
         def to_array(item):
             return [item.get(k) for k in keys]
 
         for item in gen:
-            writer.writerow(to_array(item))
+            writer.writerow([(v or '').encode("utf-8") for v in to_array(item)])
 
 
     def getargs(self, line):
@@ -558,7 +558,7 @@ class DynamoDBShell(Cmd):
                 print "consumed units:", item.consumed_units
 
     def do_rm(self, line):
-        "rm [:tablename] [!fieldname:expectedvalue] [-v] {haskkey,[rangekey]}"
+        "rm [:tablename] [!fieldname:expectedvalue] [-v] {haskkey [rangekey]}"
         table, line = self.get_table_params(line)
         expected, line = self.get_expected(line)
 
