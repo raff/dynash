@@ -43,7 +43,7 @@ SETUP_OPTIONS = dict(
     data_files=[('.', ['README.md'])
                ],
 
-    install_requires=['boto >= 2.9.0',
+    install_requires=['boto >= 2.15.0',
                       'cmd2',
                       ],
 
