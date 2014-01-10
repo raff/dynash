@@ -153,13 +153,18 @@ class DynamoDBShell(Cmd):
 
     def print_iterator_array(self, gen, keys):
         encoder = DynamoEncoder()
-        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_NONNUMERIC, doublequote=False, escapechar=str('\\'))
+        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL, doublequote=False, escapechar=str('\\'))
 
         def to_array(item):
             return [item.get(k) for k in keys]
 
+        def value(v):
+            if isinstance(v, basestring):
+                return v.encode("utf-8")
+            return v
+
         for item in gen:
-            writer.writerow([(v or '').encode("utf-8") for v in to_array(item)])
+            writer.writerow([value(v) for v in to_array(item)])
 
 
     def getargs(self, line):
@@ -609,7 +614,7 @@ class DynamoDBShell(Cmd):
 
     def do_scan(self, line):
         """
-        scan [:tablename] [--batch=#] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
+        scan [:tablename] [--batch=#] [-{max}] [--count|-c] [--array|-a] [+filter_attribute:filter_value] [attributes,...]
 
         if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
 
@@ -640,8 +645,10 @@ class DynamoDBShell(Cmd):
         start = None
 
         while args:
-            if args[0].startswith('+'):
-                arg = args.pop(0)
+            arg = args[0]
+
+            if arg.startswith('+'):
+                args.pop(0)
                 filter_name, filter_value = arg[1:].split(':', 1)
 
                 if filter_value.startswith("begin="):
@@ -672,45 +679,46 @@ class DynamoDBShell(Cmd):
 
                 scan_filter[filter_name] = filter_cond
 
-            elif args[0].startswith('--batch='):
-                arg = args.pop(0)
+            elif arg.startswith('--batch='):
+                args.pop(0)
                 batch_size = int(arg[8:])
 
-            elif args[0].startswith('--max='):
-                arg = args.pop(0)
+            elif arg.startswith('--max='):
+                args.pop(0)
                 max_size = int(arg[6:])
 
-            elif args[0].startswith('--start='):
-                arg = args.pop(0)
+            elif arg.startswith('--start='):
+                args.pop(0)
                 start = (arg[8:], )
 
-            elif args[0] == '--next':
-                arg = args.pop(0)
+            elif arg == '--next':
+                args.pop(0)
                 if self.next_key:
                     start = self.next_key
                 else:
                     print "no next"
                     return
 
-            elif args[0] == '-a' or args[0] == '--array':
-                as_array = True
+            elif arg in ['--array', '-a']:
                 args.pop(0)
+                as_array = True
 
-            elif args[0].startswith('-'):
-                arg = args.pop(0)
+            elif arg in ['--count', '-c']:
+                args.pop(0)
+                count = True
 
-                if arg == '-c' or arg == '--count':
-                    count = True
+            elif arg[0] == '-' and arg[1:].isdigit():
+                args.pop(0)
+                max_size = int(arg[1:])
 
-                elif arg[0] == '-' and arg[1:].isdigit():
-                    max_size = int(arg[1:])
+            elif arg == '--':
+                args.pop(0)
+                break
 
-                elif arg == '--':
-                    break
-
-                else:
-                    print "invalid argument: %s" % arg
-                    break
+            elif arg.startswith('-'):
+                args.pop(0)
+                print "invalid argument: %s" % arg
+                break
 
             else:
                 break
@@ -738,7 +746,7 @@ class DynamoDBShell(Cmd):
 
     def do_query(self, line):
         """
-        query [:tablename] [-r] [-{max}] [{rkey-condition}] hkey [attributes,...]
+        query [:tablename] [-r] [--count|-c] [--array|-a] [-{max}] [{rkey-condition}] hkey [attributes,...]
 
         where rkey-condition:
             --eq={key} (equal key)
@@ -778,13 +786,33 @@ class DynamoDBShell(Cmd):
                 max_size = int(arg[1:])
                 args.pop(0)
 
-            elif arg == '-c' or arg == '--count':
+            elif args[0].startswith('--max='):
+                arg = args.pop(0)
+                max_size = int(arg[6:])
+
+            elif arg in ['--count', '-c']:
                 count = True
                 args.pop(0)
 
-            elif arg == '-a' or arg == '--array':
+            elif arg in ['--array', '-a']:
                 as_array = True
                 args.pop(0)
+
+            elif args[0].startswith('--batch='):
+                arg = args.pop(0)
+                batch_size = int(arg[8:])
+
+            elif args[0].startswith('--start='):
+                arg = args.pop(0)
+                start = (arg[8:], )
+
+            elif args[0] == '--next':
+                arg = args.pop(0)
+                if self.next_key:
+                    start = self.next_key
+                else:
+                    print "no next"
+                    return
 
             elif arg.startswith("--begin="):
                 condition = BEGINS_WITH(self.get_typed_key_value(table, arg[8:], False))
@@ -821,25 +849,6 @@ class DynamoDBShell(Cmd):
                 condition = BETWEEN(self.get_typed_key_value(table, parts[0], True), self.get_typed_key_value(table, parts[1], False))
                 args.pop(0)
 
-            elif args[0].startswith('--batch='):
-                arg = args.pop(0)
-                batch_size = int(arg[8:])
-
-            elif args[0].startswith('--max='):
-                arg = args.pop(0)
-                max_size = int(arg[6:])
-
-            elif args[0].startswith('--start='):
-                arg = args.pop(0)
-                start = (arg[8:], )
-
-            elif args[0] == '--next':
-                arg = args.pop(0)
-                if self.next_key:
-                    start = self.next_key
-                else:
-                    print "no next"
-                    return
             else:
                 break
 
