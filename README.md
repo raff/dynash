@@ -40,6 +40,19 @@ and many more (use 'help' to find the available commands)
     [DynamoDB]
     region=us-west-1
 
+- You can specify alternative environments in your .boto by adding boto sections prefixed with the environment name, and then selecting the environment at startup:
+
+    --- .boto -------
+    [Credentials]
+      ...
+    [env.Credentials]
+      ...
+    [env.DynamoDB]
+      ...
+
+    --- run --------
+    > dynash --env=env
+
 - Item related commands use the currently selected table (see 'use' command) but you can pass a table name as first parameter prefixed by ':'
  
 - Command completion is enabled (and it will complete table names)
