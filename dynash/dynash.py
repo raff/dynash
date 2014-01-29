@@ -34,8 +34,6 @@ import boto
 from boto.dynamodb.exceptions import DynamoDBResponseError, DynamoDBConditionalCheckFailedError, BotoClientError
 from boto.dynamodb.condition import *
 from boto.dynamodb.types import Binary
-from boto.dynamodb.layer2 import Layer2
-from boto.regioninfo import RegionInfo
 
 import ast
 import json
@@ -85,7 +83,6 @@ class DynamoEncoder(json.JSONEncoder):
 
 
 class DynamoDBShell(Cmd):
-
     prompt = "dynash> "
 
     consistent = False
@@ -150,7 +147,6 @@ class DynamoDBShell(Cmd):
 
         print "]"
 
-
     def print_iterator_array(self, gen, keys):
         encoder = DynamoEncoder()
         writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL, doublequote=False, escapechar=str('\\'))
@@ -165,7 +161,6 @@ class DynamoDBShell(Cmd):
 
         for item in gen:
             writer.writerow([value(v) for v in to_array(item)])
-
 
     def getargs(self, line):
         return shlex.split(str(line.decode('unicode-escape')))
@@ -312,7 +307,7 @@ class DynamoDBShell(Cmd):
 
         if not args:
             if self.table:
-                args = [ self.table.name ]
+                args = [self.table.name]
             else:
                 args = self.tables
 
@@ -350,9 +345,9 @@ class DynamoDBShell(Cmd):
         args = self.getargs(line)
         rc = wc = 5
 
-        name = args.pop(0)  #  tablename
+        name = args.pop(0)  # tablename
 
-        if args[0] == "-c": # capacity
+        if args[0] == "-c":  # capacity
             args.pop(0)  # skyp -c
 
             capacity = args.pop(0).strip()
@@ -431,7 +426,7 @@ class DynamoDBShell(Cmd):
         if line.startswith('(') or line.startswith('['):
             list = self.get_list(line)
             wlist = self.conn.new_batch_write_list()
-            wlist.add_batch(table, [ table.new_item(None, None, item) for item in list ])
+            wlist.add_batch(table, [table.new_item(None, None, item) for item in list])
             response = self.conn.batch_write_item(wlist)
             consumed = response['Responses'][table.name]['ConsumedCapacityUnits']
 
@@ -869,7 +864,6 @@ class DynamoDBShell(Cmd):
 
             self.next_key = result.last_evaluated_key
 
-
         if self.consumed:
             print "consumed units:", result.consumed_units
 
@@ -963,7 +957,34 @@ class DynamoDBShell(Cmd):
         print "Goodbye!"
 
 
+def set_environment(env):
+    creds = "Credentials"
+    env_creds = "%s.%s" % (env, creds)
+
+    if boto.config.has_section(env_creds):
+        try:
+            boto.config.add_section(creds)
+        except Exception as e:
+            print e
+
+        for o in boto.config.options(env_creds):
+            boto.config.set(creds, o, boto.config.get(env_creds, o))
+
+
 def run_command():
+    import sys
+
+    args = sys.argv
+    args.pop(0)  # drop progname
+
+    while args:
+        arg = args.pop(0)
+        if arg.startswith("--env="):
+            set_environment(arg[6:])
+        else:
+            print "invalid option or parameter: %s" % arg
+            sys.exit(1)
+
     DynamoDBShell().cmdloop()
 
 
