@@ -109,7 +109,12 @@ class DynamoDBShell(Cmd):
 
         self.pp = pprint.PrettyPrinter(indent=4)
 
-        self.conn = boto.connect_dynamodb()
+        try:
+            self.conn = boto.connect_dynamodb()
+        except Exception as e:
+            self.conn = None
+            print e
+            print "Cannot connect to dynamodb - Check your credentials in ~/.boto or use the 'login' command"
 
         # by default readline thinks - and other characters are word delimiters :(
         if readline:
@@ -148,7 +153,6 @@ class DynamoDBShell(Cmd):
         print "]"
 
     def print_iterator_array(self, gen, keys):
-        encoder = DynamoEncoder()
         writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL, doublequote=False, escapechar=str('\\'))
 
         def to_array(item):
@@ -956,10 +960,11 @@ class DynamoDBShell(Cmd):
         if self.history_file and os.path.exists(self.history_file):
             readline.read_history_file(self.history_file)
 
-        try:
-            self.do_tables('')
-        except:
-            traceback.print_exc()
+        if self.conn:
+            try:
+                self.do_tables('')
+            except:
+                traceback.print_exc()
 
     def postloop(self):
         if self.history_file:
@@ -989,10 +994,12 @@ def run_command():
     args = sys.argv
     args.pop(0)  # drop progname
 
-    while args:
+    while args and args[0].startswith("-"):
         arg = args.pop(0)
         if arg.startswith("--env="):
             set_environment(arg[6:])
+        elif arg == "--":
+            break
         else:
             print "invalid option or parameter: %s" % arg
             sys.exit(1)
