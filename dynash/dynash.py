@@ -863,7 +863,7 @@ class DynamoDBShell(Cmd):
             else:
                 break
 
-        hkey = self.get_typed_key_value(table, args[0])
+        hkey = self.get_typed_key_value(table, args.pop(0))
         attr_keys = args[0].split(",") if args else None
         attrs = list(set(attr_keys)) if attr_keys else None
 
