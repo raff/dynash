@@ -38,8 +38,9 @@ from boto.exception import BotoClientError, JSONResponseError
 from boto.regioninfo import RegionInfo
 
 import ast
-import json
 import csv
+import decimal
+import json
 import logging
 import os
 import os.path
@@ -82,7 +83,10 @@ class DynamoEncoder(json.JSONEncoder):
         else:
             return list(iterable)
 
-        return JSONEncoder.default(self, o)
+        if isinstance(o, decimal.Decimal):
+            return long(o) if o._isinteger() else float(o)
+
+        return json.JSONEncoder.default(self, o)
 
 
 class DynamoDBShell2(Cmd):
@@ -144,7 +148,7 @@ class DynamoDBShell2(Cmd):
         for next_item in gen:
             if prev_item:
                 print "  %s," % encoder.encode(prev_item)
-            prev_item = next_item
+            prev_item = dict(next_item.items())
 
         if prev_item:
             print "  %s" % encoder.encode(prev_item)
@@ -257,6 +261,8 @@ class DynamoDBShell2(Cmd):
         return {keyname: value}
 
     def get_typed_value(self, field, value):
+        field = field.split('__')[0]  # in dynamodb2 fields may contain a conditional as {name}__{conditional}
+
         ftype = self.schema.get(field)
         if not ftype:
             return value
@@ -463,7 +469,7 @@ class DynamoDBShell2(Cmd):
         if read_units < current_read or write_units < current_write:
             print "%s: updating capacity to %d read units, %d write units" % (table.table_name, read_units, write_units)
             print ""
-            if not table.update({'read': read_units, 'write': write_units}):
+            if not table.update(throughput={'read': read_units, 'write': write_units}):
                 print "update failed"
             else:
                 self.do_refresh(table.table_name)
@@ -698,68 +704,46 @@ class DynamoDBShell2(Cmd):
 
     def do_scan(self, line):
         """
-        scan [:tablename] [--batch=#] [-{max}] [-c] [+filter_attribute:filter_value] [attributes,...]
+        scan [:tablename] [--batch=#] [-{max}] [+filter_attribute:filter_value] [attributes,...]
 
-        if filter_value contains '=' it's interpreted as {conditional}={value} where condtional is:
+        filter_attribute is either the field name to filter on or a field name with a conditional, as specified in boto's documentation,
+        in the form of {name}__{conditional} where conditional is:
 
             eq (equal value)
             ne {value} (not equal value)
-            le (less or equal then value)
+            lte (less or equal then value)
             lt (less then value)
-            ge (greater or equal then value)
+            gte (greater or equal then value)
             gt (greater then value)
-            :exists (value exists)
-            :nexists (value does not exists)
+            nnull (value not null / exists)
+            null (value is null / does not exists)
             contains (contains value)
             ncontains (does not contains value)
-            begin (attribute begins with value)
+            beginswith (attribute begins with value)
+            in (value in range)
             between (between value1 and value2 - use: between=value1,value2)
-
-        otherwise the value must fully match (equal attribute)
         """
 
         table, line = self.get_table_params(line)
         args = self.getargs(line)
 
         scan_filter = {}
-        count = False
+        #count = False
         as_array = False
         max_size = None
         batch_size = None
         start = None
+        cond = None
 
         while args:
             if args[0].startswith('+'):
                 arg = args.pop(0)
                 filter_name, filter_value = arg[1:].split(':', 1)
 
-                if filter_value.startswith("begin="):
-                    filter_cond = BEGINS_WITH(self.get_typed_value(filter_name, filter_value[6:]))
-                elif filter_value.startswith("eq="):
-                    filter_cond = EQ(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value.startswith("ne="):
-                    filter_cond = NE(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value.startswith("le="):
-                    filter_cond = LE(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value.startswith("lt="):
-                    filter_cond = LT(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value.startswith("ge="):
-                    filter_cond = GE(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value.startswith("gt="):
-                    filter_cond = GT(self.get_typed_value(filter_name, filter_value[3:]))
-                elif filter_value == ":exists":
-                    filter_cond = NOT_NULL()
-                elif filter_value == ":nexists":
-                    filter_cond = NULL()
-                elif filter_value.startswith("contains="):
-                    filter_cond = CONTAINS(self.get_typed_value(filter_name, filter_value[9:]))
-                elif filter_value.startswith("between="):
-                    parts = filter_value[8:].split(",", 1)
-                    filter_cond = BETWEEN(self.get_typed_value(parts[0]), self.get_typed_value(filter_name, parts[1]))
-                else:
-                    filter_cond = EQ(self.get_typed_value(filter_name, filter_value))
+                if "__" not in filter_name:
+                    filter_name += "__eq"
 
-                scan_filter[filter_name] = filter_cond
+                scan_filter[filter_name] = self.get_typed_value(filter_name, filter_value)
 
             elif args[0].startswith('--batch='):
                 arg = args.pop(0)
@@ -772,6 +756,14 @@ class DynamoDBShell2(Cmd):
             elif args[0].startswith('--start='):
                 arg = args.pop(0)
                 start = (arg[8:], )
+
+            elif args[0] == "--and":
+                args.pop(0)
+                cond = "AND"
+
+            elif args[0] == "--or":
+                args.pop(0)
+                cond = "OR"
 
             elif args[0] == '--next':
                 arg = args.pop(0)
@@ -788,10 +780,10 @@ class DynamoDBShell2(Cmd):
             elif args[0].startswith('-'):
                 arg = args.pop(0)
 
-                if arg == '-c' or arg == '--count':
-                    count = True
+                #if arg == '-c' or arg == '--count':
+                #    count = True
 
-                elif arg[0] == '-' and arg[1:].isdigit():
+                if arg[0] == '-' and arg[1:].isdigit():
                     max_size = int(arg[1:])
 
                 elif arg == '--':
@@ -807,11 +799,9 @@ class DynamoDBShell2(Cmd):
         attr_keys = args[0].split(",") if args else None
         attrs = list(set(attr_keys)) if attr_keys else None
 
-        #print "scan filter:%s attributes:%s limit:%s max:%s count:%s" % (scan_filter, attrs, batch_size, max, count)
+        result = table.scan(limit=max_size, max_page_size=batch_size, attributes=attrs, exclusive_start_key=start, conditional_operator=cond, **scan_filter)
 
-        result = table.scan(scan_filter=scan_filter, attributes_to_get=attrs, request_limit=batch_size, max_results=max_size, count=count, exclusive_start_key=start)
-
-        if count:
+        if False: # count:
             print "count: %s/%s" % (result.scanned_count, result.count)
             self.next_key = None
         else:
@@ -820,7 +810,7 @@ class DynamoDBShell2(Cmd):
             else:
                 self.print_iterator(result)
 
-            self.next_key = result.last_evaluated_key
+            #self.next_key = result.last_evaluated_key
 
         if self.consumed:
             print "consumed units:", result.consumed_units
@@ -947,7 +937,7 @@ class DynamoDBShell2(Cmd):
             else:
                 self.print_iterator(result)
 
-            self.next_key = result.last_evaluated_key
+            #self.next_key = result.last_evaluated_key
 
 
         if self.consumed:
