@@ -290,6 +290,18 @@ class DynamoDBShell2(Cmd):
 
         return expected or None, line
 
+    def do_env(self, line):
+        """
+        env {environment-name}
+        """
+        if not line:
+            print "use: env {environment-name}"
+        else:
+            if not set_environment(line):
+                print "no configuration for environment %s" % line
+            else:
+                self.do_login('')
+
     def do_schema(self, line):
         """
         schema
@@ -1029,6 +1041,20 @@ class DynamoDBShell2(Cmd):
             readline.write_history_file(self.history_file)
 
         print "Goodbye!"
+
+
+def set_environment(env):
+    found = False
+    for section in ['Credentials', 'DynamoDB']:
+        env_section = "%s.%s" % (env, section)
+
+        if boto.config.has_section(env_section):
+            found = True
+            if not boto.config.has_section(section):
+                boto.config.add_section(section)
+            for o in boto.config.options(env_section):
+                boto.config.set(section, o, boto.config.get(env_section, o))
+    return found
 
 
 def run_command():
