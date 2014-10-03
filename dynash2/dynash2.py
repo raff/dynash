@@ -1048,6 +1048,21 @@ def set_environment(env):
 
 
 def run_command():
+    import sys
+
+    args = sys.argv
+    args.pop(0)  # drop progname
+
+    while args and args[0].startswith("-"):
+        arg = args.pop(0)
+        if arg.startswith("--env="):
+            set_environment(arg[6:])
+        elif arg == "--":
+            break
+        else:
+            print "invalid option or parameter: %s" % arg
+            sys.exit(1)
+
     DynamoDBShell2().cmdloop()
 
 
