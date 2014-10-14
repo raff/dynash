@@ -799,7 +799,7 @@ class DynamoDBShell2(Cmd):
         attr_keys = args[0].split(",") if args else None
         attrs = list(set(attr_keys)) if attr_keys else None
 
-        result = table.scan(limit=max_size, max_page_size=batch_size, attributes=attrs, exclusive_start_key=start, conditional_operator=cond, **scan_filter)
+        result = table.scan(limit=max_size, max_page_size=batch_size, attributes=attrs, conditional_operator=cond, exclusive_start_key=start, **scan_filter)
 
         if False: # count:
             print "count: %s/%s" % (result.scanned_count, result.count)
@@ -810,7 +810,7 @@ class DynamoDBShell2(Cmd):
             else:
                 self.print_iterator(result)
 
-            #self.next_key = result.last_evaluated_key
+            self.next_key = result._last_key_seen
 
         if self.consumed:
             print "consumed units:", result.consumed_units
