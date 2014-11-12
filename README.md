@@ -1,8 +1,15 @@
 dynash
 ======
-
 A simple "shell" to access DynamoDB via "boto".
 
+### Usage
+    # boto dynamodb APIs
+    > dynash [--verbose] [--env=environment]
+
+    # boto dynamodb2 APIs
+    > dynash2 [--verbose] [--local] [--env=environment]
+    
+### Description
 You can create/delete/list/describe tables, add/modify/delete/list records and more.
 
 - ls: list tables
