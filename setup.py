@@ -50,6 +50,7 @@ SETUP_OPTIONS = dict(
     entry_points="""
     [console_scripts]
     dynash=dynash.dynash:run_command
+    dynash2=dynash2.dynash2:run_command
     """
     )
 
