@@ -104,7 +104,7 @@ class DynamoDBShell(Cmd):
         else:
             boto.set_stream_logger('boto', level=logging.WARNING)
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         Cmd.__init__(self)
 
         self.pp = pprint.PrettyPrinter(indent=4)
@@ -129,9 +129,12 @@ class DynamoDBShell(Cmd):
         self.table = None
         self.consistent = False
         self.consumed = False
-        self.verbose = False
+        self.verbose = verbose
         self.next_key = None
         self.schema = {}
+
+        if verbose:
+            self._onchange_verbose(None, verbose)
 
     def pprint(self, object, prefix=''):
         print "%s%s" % (prefix, self.pp.pformat(object) if self.pretty else str(object))
@@ -994,17 +997,21 @@ def run_command():
     args = sys.argv
     args.pop(0)  # drop progname
 
+    verbose = False
+
     while args and args[0].startswith("-"):
         arg = args.pop(0)
         if arg.startswith("--env="):
             set_environment(arg[6:])
+        elif arg.startswith("--verbose"):
+            verbose = True
         elif arg == "--":
             break
         else:
             print "invalid option or parameter: %s" % arg
             sys.exit(1)
 
-    DynamoDBShell().cmdloop()
+    DynamoDBShell(verbose).cmdloop()
 
 
 if __name__ == '__main__':

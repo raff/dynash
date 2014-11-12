@@ -112,12 +112,15 @@ class DynamoDBShell2(Cmd):
         else:
             boto.set_stream_logger('boto', level=logging.WARNING)
 
-    def __init__(self):
+    def __init__(self, local=False, verbose=False):
         Cmd.__init__(self)
 
         self.pp = pprint.PrettyPrinter(indent=4)
 
-        self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
+        if local:
+            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host='localhost', port=8000, is_secure=False)
+        else:
+            self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
 
         # by default readline thinks - and other characters are word delimiters :(
         if readline:
@@ -132,9 +135,12 @@ class DynamoDBShell2(Cmd):
         self.table = None
         self.consistent = False
         self.consumed = False
-        self.verbose = False
+        self.verbose = verbose
         self.next_key = None
         self.schema = {}
+
+        if verbose:
+            self._onchange_verbose(None, verbose)
 
     def pprint(self, object, prefix=''):
         print "%s%s" % (prefix, self.pp.pformat(object) if self.pretty else str(object))
@@ -390,7 +396,7 @@ class DynamoDBShell2(Cmd):
                         hkey = value
                     elif k['KeyType'] == 'RANGE':
                         rkey = ' ' + value
-                    
+
                 prov = info['ProvisionedThroughput']
                 prov = "-c %d,%d" % (prov['ReadCapacityUnits'], prov['WriteCapacityUnits'])
                 print "create %s %s %s%s" % (name, prov, hkey, rkey)
@@ -704,7 +710,7 @@ class DynamoDBShell2(Cmd):
 
     def do_scan(self, line):
         """
-        scan [:tablename] [--batch=#] [-{max}] [+filter_attribute:filter_value] [attributes,...]
+        scan [:tablename] [--batch=#] [-{max}] [+filter_attribute=filter_value] [attributes,...]
 
         filter_attribute is either the field name to filter on or a field name with a conditional, as specified in boto's documentation,
         in the form of {name}__{conditional} where conditional is:
@@ -715,8 +721,7 @@ class DynamoDBShell2(Cmd):
             lt (less then value)
             gte (greater or equal then value)
             gt (greater then value)
-            nnull (value not null / exists)
-            null (value is null / does not exists)
+            null (value is null / does not exists - pass true/false)
             contains (contains value)
             ncontains (does not contains value)
             beginswith (attribute begins with value)
@@ -738,12 +743,15 @@ class DynamoDBShell2(Cmd):
         while args:
             if args[0].startswith('+'):
                 arg = args.pop(0)
-                filter_name, filter_value = arg[1:].split(':', 1)
+                filter_name, filter_value = arg[1:].split('=', 1)
 
                 if "__" not in filter_name:
                     filter_name += "__eq"
 
-                scan_filter[filter_name] = self.get_typed_value(filter_name, filter_value)
+                if filter_name.endswith("__null"):
+                    scan_filter[filter_name] = filter_value == "true"
+                else:
+                    scan_filter[filter_name] = self.get_typed_value(filter_name, filter_value)
 
             elif args[0].startswith('--batch='):
                 arg = args.pop(0)
@@ -1053,17 +1061,24 @@ def run_command():
     args = sys.argv
     args.pop(0)  # drop progname
 
+    local = False
+    verbose = False
+
     while args and args[0].startswith("-"):
         arg = args.pop(0)
         if arg.startswith("--env="):
             set_environment(arg[6:])
+        elif arg.startswith("--local"):
+            local = True
+        elif arg.startswith("--verbose"):
+            verbose = True
         elif arg == "--":
             break
         else:
             print "invalid option or parameter: %s" % arg
             sys.exit(1)
 
-    DynamoDBShell2().cmdloop()
+    DynamoDBShell2(local, verbose).cmdloop()
 
 
 if __name__ == '__main__':
