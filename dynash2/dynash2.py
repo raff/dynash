@@ -112,15 +112,17 @@ class DynamoDBShell2(Cmd):
         else:
             boto.set_stream_logger('boto', level=logging.WARNING)
 
-    def __init__(self, local=False, verbose=False):
+    def __init__(self, verbose=False):
         Cmd.__init__(self)
 
         self.pp = pprint.PrettyPrinter(indent=4)
 
-        if local:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host='localhost', port=8000, is_secure=False)
-        else:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
+	region = boto.config.get('DynamoDB', 'region', None)
+	host = boto.config.get('DynamoDB', 'host', None)
+	port = boto.config.get('DynamoDB', 'port', None)
+	is_secure = boto.config.getbool('DynamoDB', 'is_secure', True)
+
+        self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host=host, port=port, is_secure=is_secure)
 
         # by default readline thinks - and other characters are word delimiters :(
         if readline:
@@ -1061,15 +1063,12 @@ def run_command():
     args = sys.argv
     args.pop(0)  # drop progname
 
-    local = False
     verbose = False
 
     while args and args[0].startswith("-"):
         arg = args.pop(0)
         if arg.startswith("--env="):
             set_environment(arg[6:])
-        elif arg.startswith("--local"):
-            local = True
         elif arg.startswith("--verbose"):
             verbose = True
         elif arg == "--":
@@ -1078,7 +1077,7 @@ def run_command():
             print "invalid option or parameter: %s" % arg
             sys.exit(1)
 
-    DynamoDBShell2(local, verbose).cmdloop()
+    DynamoDBShell2(verbose).cmdloop()
 
 
 if __name__ == '__main__':
