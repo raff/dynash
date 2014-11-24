@@ -118,7 +118,7 @@ class DynamoDBShell2(Cmd):
         self.pp = pprint.PrettyPrinter(indent=4)
 
         if local:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host='localhost', port=8000, is_secure=False)
+            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host='dynamodb.local.amazonaws.com', port=8000, is_secure=False)
         else:
             self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
 
@@ -135,9 +135,10 @@ class DynamoDBShell2(Cmd):
         self.table = None
         self.consistent = False
         self.consumed = False
-        self.verbose = verbose
         self.next_key = None
         self.schema = {}
+        self.verbose = verbose
+        self.local = local
 
         if verbose:
             self._onchange_verbose(None, verbose)
@@ -340,14 +341,20 @@ class DynamoDBShell2(Cmd):
 
     def do_login(self, line):
         "login aws-acces-key aws-secret"
+        if local:
+            params = {'host': 'localhost', 'port': 8000, 'is_secure': False}
+        else:
+            params = {}
+
         if line:
             args = self.getargs(line)
 
             self.conn = boto.dynamodb2.layer1.DynamoDBConnection(
                 aws_access_key_id=args[0],
-                aws_secret_access_key=args[1])
+                aws_secret_access_key=args[1],
+                **params)
         else:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
+            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(**params)
 
         self.do_tables('')
 
@@ -438,11 +445,11 @@ class DynamoDBShell2(Cmd):
         t = boto.dynamodb2.table.Table.create(name,
                                               schema=schema,
                                               throughput={'read': rc, 'write': wc})
-        self.pprint(self.t.describe())
+        self.pprint(t.describe())
 
     def do_drop(self, line):
         "drop {tablename}"
-        self.conn.get_table(line).delete()
+        self.get_table(line).delete()
 
     def do_refresh(self, line):
         "refresh {table_name}"
