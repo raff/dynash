@@ -37,7 +37,8 @@ SETUP_OPTIONS = dict(
         'Programming Language :: Python :: 2.7'
     ],
 
-    packages=['dynash'
+    packages=['dynash',
+              'dynash2',
               ],
 
     data_files=[('.', ['README.md'])

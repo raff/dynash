@@ -112,15 +112,12 @@ class DynamoDBShell2(Cmd):
         else:
             boto.set_stream_logger('boto', level=logging.WARNING)
 
-    def __init__(self, local=False, verbose=False):
+    def __init__(self, verbose=False):
         Cmd.__init__(self)
 
         self.pp = pprint.PrettyPrinter(indent=4)
 
-        if local:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(host='dynamodb.local.amazonaws.com', port=8000, is_secure=False)
-        else:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection()
+        self.connect()
 
         # by default readline thinks - and other characters are word delimiters :(
         if readline:
@@ -138,10 +135,31 @@ class DynamoDBShell2(Cmd):
         self.next_key = None
         self.schema = {}
         self.verbose = verbose
-        self.local = local
 
         if verbose:
             self._onchange_verbose(None, verbose)
+
+    def connect(self, accesskey=None, secret=None):
+	region = boto.config.get('DynamoDB', 'region', None)
+	host = boto.config.get('DynamoDB', 'host', None)
+	port = boto.config.get('DynamoDB', 'port', None)
+	is_secure = boto.config.getbool('DynamoDB', 'is_secure', True)
+
+        params = {}
+
+        if accesskey:
+            params['aws_access_key_id'] = accesskey
+            params['aws_secret_access_key'] = secret
+        if region:
+            params['region'] = region
+        if host:
+            params['host'] = host
+        if port:
+            params['port'] = host
+        if is_secure:
+            params['is_secure'] = is_secure
+
+        self.conn = boto.dynamodb2.layer1.DynamoDBConnection(**params)
 
     def pprint(self, object, prefix=''):
         print "%s%s" % (prefix, self.pp.pformat(object) if self.pretty else str(object))
@@ -341,20 +359,11 @@ class DynamoDBShell2(Cmd):
 
     def do_login(self, line):
         "login aws-acces-key aws-secret"
-        if local:
-            params = {'host': 'localhost', 'port': 8000, 'is_secure': False}
-        else:
-            params = {}
-
         if line:
             args = self.getargs(line)
-
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(
-                aws_access_key_id=args[0],
-                aws_secret_access_key=args[1],
-                **params)
+            self.connect(args[0], args[1])
         else:
-            self.conn = boto.dynamodb2.layer1.DynamoDBConnection(**params)
+            self.connect()
 
         self.do_tables('')
 
@@ -1068,15 +1077,12 @@ def run_command():
     args = sys.argv
     args.pop(0)  # drop progname
 
-    local = False
     verbose = False
 
     while args and args[0].startswith("-"):
         arg = args.pop(0)
         if arg.startswith("--env="):
             set_environment(arg[6:])
-        elif arg.startswith("--local"):
-            local = True
         elif arg.startswith("--verbose"):
             verbose = True
         elif arg == "--":
@@ -1085,7 +1091,7 @@ def run_command():
             print "invalid option or parameter: %s" % arg
             sys.exit(1)
 
-    DynamoDBShell2(local, verbose).cmdloop()
+    DynamoDBShell2(verbose).cmdloop()
 
 
 if __name__ == '__main__':
