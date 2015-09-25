@@ -825,6 +825,17 @@ class DynamoDBShell2(Cmd):
 
         result = table.scan(limit=max_size, max_page_size=batch_size, attributes=attrs, conditional_operator=cond, exclusive_start_key=start, **scan_filter)
 
+        #
+        # enable this if you want to see when pages are fetched
+        #
+        if False:
+            _fetch_more = result.fetch_more
+            def fetch_more():
+                print "==== fetch page ===="
+                _fetch_more()
+
+            result.fetch_more = fetch_more
+
         if False: # count:
             print "count: %s/%s" % (result.scanned_count, result.count)
             self.next_key = None

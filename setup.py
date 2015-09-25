@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from dynash import __version__
+import os
 import sys
 
 try:
@@ -14,11 +15,14 @@ if sys.version_info <= (2, 5):
     print >> sys.stderr, error
     sys.exit(1)
 
+def read_file(fname):
+    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
 SETUP_OPTIONS = dict(
     name='dynash',
     version=__version__,
     description='Command line client for DynamoDB',
-    long_description = open("README.md").read(),
+    long_description = read_file("README.md"),
     author='Raffaele Sena',
     author_email='raff367@gmail.com',
     url='https://github.com/raff/dynash',
